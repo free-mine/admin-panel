@@ -1,0 +1,16 @@
+.icon {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  vertical-align: middle;
+
+  &--light {
+    filter: brightness(0) invert(1);
+  }
+
+  &--large {
+    width: 36px;
+    height: 36px;
+  }
+}
