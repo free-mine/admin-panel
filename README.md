@@ -1,8 +1,6 @@
 ﻿# Admin Panel
 
-Панель администратора Free Mine (https://github.com/free-mine/contracts, 5b7bd28).
-
-Данный репозиторий запускает в Docker Compose бекенд (https://github.com/free-mine/admin-server, f47be58) и собственный фронтенд.
+Панель администратора Free Mine.
 
 ## Запуск
 
