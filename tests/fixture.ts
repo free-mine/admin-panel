@@ -13,6 +13,7 @@ export const address = (suffix: number) =>
   `0x${String(suffix).padStart(40, '0')}`
 export const config: Config = {
   chainId: 43114,
+  readOnly: false,
   owner: address(1),
   websocket: '/v1/ws',
   previewTtlSeconds: 120,
@@ -56,6 +57,8 @@ export async function mockApi(page: Page): Promise<MockState> {
     previews: [],
     operations: [],
     connections: 0,
+    socketUrls: [],
+    readOnly: false,
     submissions: [],
     plans: new Map(),
     loseSubmit: false,
@@ -80,6 +83,7 @@ export async function mockApi(page: Page): Promise<MockState> {
   }
   await page.routeWebSocket('**/v1/ws', socket => {
     state.connections++
+    state.socketUrls.push(socket.url())
     sockets.push(socket)
     socket.send(
       JSON.stringify({
@@ -98,14 +102,14 @@ export async function mockApi(page: Page): Promise<MockState> {
     }
     if (path === '/ready') {
       return state.ready
-        ? respond({ status: 'ready' })
+        ? respond({ status: 'ready', readOnly: state.readOnly })
         : respond(
             { status: 'unavailable', error: { code: 'SERVICE_NOT_READY' } },
             503,
           )
     }
     if (path === '/v1/config') {
-      return respond(config)
+      return respond({ ...config, readOnly: state.readOnly })
     }
     if (path === '/v1/fund') {
       return respond(fund)

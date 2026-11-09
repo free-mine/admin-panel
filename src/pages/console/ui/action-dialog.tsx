@@ -148,6 +148,7 @@ export function ActionDialog(props: {
     if (
       busy() ||
       !props.session.ready() ||
+      props.session.readOnly() ||
       !plan ||
       (!uncertain() && (!accepted() || !remaining()))
     ) {
@@ -174,6 +175,7 @@ export function ActionDialog(props: {
     } catch (cause) {
       if (
         cause instanceof ApiError &&
+        cause.detail.code !== 'READ_ONLY' &&
         cause.status >= 400 &&
         cause.status < 500
       ) {
@@ -218,6 +220,12 @@ export function ActionDialog(props: {
       </div>
       <h2 id="action-title">{actions[props.draft.kind].title}</h2>
       <p class="console__subtle">{actions[props.draft.kind].description}</p>
+      <Show when={props.session.readOnly()}>
+        <div role="status" class="console__notice">
+          Режим только чтения: план можно проверить, но выполнить операцию
+          нельзя.
+        </div>
+      </Show>
       <Show when={error()}>
         <div role="alert" class="console__notice console__notice--danger">
           {error()}
@@ -490,6 +498,7 @@ export function ActionDialog(props: {
                 <input
                   type="checkbox"
                   checked={accepted()}
+                  disabled={props.session.readOnly()}
                   onChange={event => setAccepted(event.currentTarget.checked)}
                 />
                 Я проверил параметры, разрешения и лимит газа.
@@ -517,6 +526,7 @@ export function ActionDialog(props: {
                     disabled={
                       busy() ||
                       !props.session.ready() ||
+                      props.session.readOnly() ||
                       (!uncertain() && (!accepted() || !remaining()))
                     }
                   >

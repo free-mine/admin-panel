@@ -1,11 +1,12 @@
 import { For, Show } from 'solid-js'
 
+import { Amount } from './amount'
 import type { Balances } from '../api/types'
 import type { Session } from '../model/types'
 import { createRemote } from '../model/remote'
 import { Address, DataState } from './primitives'
 import { tokenUrls } from '../../../shared/assets'
-import { units, decimal } from '../../../shared/lib/format'
+import { fromUnits } from '../../../shared/lib/format'
 
 export function BalanceStrip(props: { session: Session; expanded?: boolean }) {
   const balances = createRemote<Balances>(
@@ -39,7 +40,11 @@ export function BalanceStrip(props: { session: Session; expanded?: boolean }) {
                         />
                         <span>{token.symbol}</span>
                       </div>
-                      <strong>{units(token.balance, token.decimals)}</strong>
+                      <strong>
+                        <Amount
+                          value={fromUnits(token.balance, token.decimals)}
+                        />
+                      </strong>
                       <Show when={props.expanded}>
                         <Address value={token.address} />
                       </Show>
@@ -51,12 +56,16 @@ export function BalanceStrip(props: { session: Session; expanded?: boolean }) {
                 <div class="console__grid">
                   <div class="console__panel">
                     <p class="console__eyebrow">Нативный баланс OreVein</p>
-                    <h2>{decimal(data().oreVeinAvax)} AVAX</h2>
+                    <h2>
+                      <Amount value={data().oreVeinAvax} /> AVAX
+                    </h2>
                     <p>Средства контракта, отдельно от WAVAX.</p>
                   </div>
                   <div class="console__panel">
                     <p class="console__eyebrow">Газ владельца</p>
-                    <h2>{decimal(data().ownerAvax)} AVAX</h2>
+                    <h2>
+                      <Amount value={data().ownerAvax} /> AVAX
+                    </h2>
                     <Address value={data().owner} />
                     <p>Комиссии всех операций оплачивает владелец.</p>
                   </div>

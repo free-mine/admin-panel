@@ -10,6 +10,7 @@ export interface Config {
   owner: string
   chainId: number
   tokens: Token[]
+  readOnly: boolean
   websocket: string
   previewTtlSeconds: number
   addresses: {
@@ -21,6 +22,10 @@ export interface Config {
     uniswapFactory: string
     uniswapPositionManager: string
   }
+}
+export interface Readiness {
+  status: string
+  readOnly: boolean
 }
 export interface Balances {
   owner: string

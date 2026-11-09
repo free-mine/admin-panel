@@ -9,23 +9,17 @@ import { ActionDialog } from './action-dialog'
 import { wordmark } from '../../../shared/assets'
 import { SuccessorsView } from './successors-view'
 import { OperationsView } from './operations-view'
-import type { Config, Operation } from '../api/types'
 import { dateTime } from '../../../shared/lib/format'
-import { request, ApiError, normalizeEndpoint } from '../../../shared/api'
+import { request, ApiError } from '../../../shared/api'
+import { readPending, savePending } from '../model/submission'
+import type { Config, Operation, Readiness } from '../api/types'
 import type { Session, ActionDraft, PendingSubmission } from '../model/types'
-import {
-  readPending,
-  savePending,
-  saveEndpoint,
-  savedEndpoint,
-} from '../model/submission'
 
 const navigation = [
   { id: 'fund', icon: 'fund', title: 'Фонд' },
   { id: 'capital', icon: 'wallet', title: 'Капитал' },
   { id: 'operations', title: 'Операции', icon: 'operations' },
   { id: 'successors', title: 'Преемники', icon: 'successors' },
-  { id: 'connection', icon: 'settings', title: 'Подключение' },
 ]
 
 export function ConsolePage() {
@@ -33,9 +27,10 @@ export function ConsolePage() {
     window.location.hash.slice(1) || 'fund',
   )
   const [menu, setMenu] = createSignal(false)
-  const [endpoint, setEndpoint] = createSignal(savedEndpoint())
+  const endpoint = window.location.origin
   const [session, setSession] = createSignal<Session>()
   const [ready, setReady] = createSignal(false)
+  const [readOnly, setReadOnly] = createSignal(true)
   const [revision, setRevision] = createSignal(0)
   const [checking, setChecking] = createSignal(false)
   const [checkedAt, setCheckedAt] = createSignal<number>()
@@ -60,7 +55,6 @@ export function ConsolePage() {
     /^[\da-f-]{36}$/i.test(route().split('/')[1] ?? '')
       ? route().split('/')[1]
       : ''
-  const connectionVisible = () => !session() || section() === 'connection'
   function navigate(value: string) {
     window.location.hash = value
     setRoute(value)
@@ -96,6 +90,7 @@ export function ConsolePage() {
       return
     }
     const url = new URL(current.config.websocket, current.endpoint)
+    url.hostname = 'localhost'
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     const activeSocket = new WebSocket(url)
     socket = activeSocket
@@ -138,16 +133,14 @@ export function ConsolePage() {
     readinessInFlight = version
     const check = ++readinessGeneration
     try {
-      const result = await request<{ status: string }>(
-        current.endpoint,
-        '/ready',
-      )
+      const result = await request<Readiness>(current.endpoint, '/ready')
       if (version !== generation || check !== readinessGeneration || disposed) {
         return
       }
-      if (result.status !== 'ready') {
+      if (result.status !== 'ready' || typeof result.readOnly !== 'boolean') {
         throw new Error('Сервер не подтвердил готовность.')
       }
+      setReadOnly(result.readOnly)
       setReady(true)
       setConnectionError('')
       setCheckedAt(Date.now())
@@ -168,35 +161,21 @@ export function ConsolePage() {
       refresh()
     }
   }
-  async function connect(event?: SubmitEvent) {
-    event?.preventDefault()
+  async function connect() {
     if (checking()) {
       return
     }
-    let base: string
-    try {
-      base = normalizeEndpoint(endpoint())
-    } catch (cause) {
-      setConnectionError(errorMessage(cause))
-      return
-    }
-    if (pending() && pending()?.endpoint !== base) {
-      setConnectionError(
-        'Сначала проверьте отправку операции на предыдущем сервере.',
-      )
-      return
-    }
+    const base = endpoint
     const version = ++generation
     setChecking(true)
     setReady(false)
     setConnectionError('')
     setDraft(undefined)
     stopSocket()
-    clearInterval(healthTimer)
     try {
       const results = await Promise.allSettled([
         request<{ status: string }>(base, '/health'),
-        request<{ status: string }>(base, '/ready'),
+        request<Readiness>(base, '/ready'),
         request<Config>(base, '/v1/config'),
       ])
       if (version !== generation || disposed) {
@@ -219,6 +198,8 @@ export function ConsolePage() {
       }
       if (
         config.value.chainId !== 43114 ||
+        typeof config.value.readOnly !== 'boolean' ||
+        typeof readiness.value.readOnly !== 'boolean' ||
         !Array.isArray(config.value.tokens) ||
         !config.value.addresses?.oreVein ||
         config.value.websocket !== '/v1/ws'
@@ -230,23 +211,16 @@ export function ConsolePage() {
       const current: Session = {
         ready,
         refresh,
+        readOnly,
         revision,
         endpoint: base,
         config: config.value,
       }
       setSession(current)
+      setReadOnly(config.value.readOnly || readiness.value.readOnly)
       setReady(true)
       setCheckedAt(Date.now())
-      setEndpoint(base)
-      saveEndpoint(base)
       startSocket(current, version)
-      healthTimer = setInterval(
-        () => void checkReadiness(current, version),
-        15000,
-      )
-      if (event) {
-        navigate('fund')
-      }
     } catch (cause) {
       if (!disposed && version === generation) {
         setConnectionError(errorMessage(cause))
@@ -263,6 +237,7 @@ export function ConsolePage() {
       !submission ||
       recovering() ||
       !ready() ||
+      readOnly() ||
       submission.endpoint !== session()?.endpoint
     ) {
       return
@@ -280,6 +255,7 @@ export function ConsolePage() {
     } catch (cause) {
       if (
         cause instanceof ApiError &&
+        cause.detail.code !== 'READ_ONLY' &&
         cause.status >= 400 &&
         cause.status < 500
       ) {
@@ -299,6 +275,14 @@ export function ConsolePage() {
     const syncSubmission = () => setPending(readPending())
     window.addEventListener('storage', syncSubmission)
     void connect()
+    healthTimer = setInterval(() => {
+      const current = session()
+      if (current) {
+        void checkReadiness(current, generation)
+      } else {
+        void connect()
+      }
+    }, 15000)
     onCleanup(() => {
       window.removeEventListener('hashchange', listener)
       window.removeEventListener('storage', syncSubmission)
@@ -355,11 +339,8 @@ export function ConsolePage() {
         </Show>
         <div class="console__server">
           <span classList={{ console__online: ready() }}>
-            ● {ready() ? 'Сервер готов' : 'Нет подключения'}
+            ● {ready() ? 'Сервер подключён' : 'Нет подключения'}
           </span>
-          <small class="console__mono">
-            {session()?.endpoint ?? endpoint()}
-          </small>
         </div>
       </aside>
       <div class="console__workspace">
@@ -388,6 +369,15 @@ export function ConsolePage() {
           </div>
         </header>
         <main tabIndex={-1} id="main-content" class="console__main">
+          <Show when={session() && readOnly()}>
+            <div role="status" class="console__notice">
+              <b>Режим только чтения</b>
+              <p>
+                Можно просматривать данные и проверять планы операций.
+                Выполнение доступно после запуска сервера с ключом владельца.
+              </p>
+            </div>
+          </Show>
           <Show when={session() && !ready()}>
             <div role="alert" class="console__notice console__notice--danger">
               {connectionError() || 'Проверяем подключение…'} Новые операции
@@ -416,7 +406,13 @@ export function ConsolePage() {
               <button
                 class="console__button"
                 onClick={() => void recover()}
-                disabled={recovering() || !ready() || !!draft()}
+                disabled={
+                  recovering() ||
+                  !ready() ||
+                  readOnly() ||
+                  !!draft() ||
+                  pending()?.endpoint !== endpoint
+                }
               >
                 {recovering() ? 'Проверка…' : 'Проверить отправку'}
               </button>
@@ -427,114 +423,28 @@ export function ConsolePage() {
               {recoveryError()}
             </div>
           </Show>
-          <Show when={connectionVisible()}>
-            <header class="console__page-heading">
-              <div>
-                <p class="console__eyebrow">Локальное рабочее пространство</p>
-                <h1>Подключение</h1>
-                <p>Ваш сервер. Ваши контракты. Ваш капитал.</p>
-              </div>
-            </header>
-            <div class="console__connection-layout">
-              <section class="console__panel">
-                <h2>Сервер владельца</h2>
-                <p>
-                  Подключите панель к экземпляру Free Mine в Avalanche C-Chain.
-                </p>
-                <form onSubmit={event => void connect(event)}>
-                  <div class="console__field">
-                    <label for="api-endpoint">Адрес API</label>
-                    <input
-                      required
-                      type="url"
-                      id="api-endpoint"
-                      value={endpoint()}
-                      aria-describedby="endpoint-hint"
-                      placeholder="http://127.0.0.1:5175"
-                      onInput={event => setEndpoint(event.currentTarget.value)}
-                    />
-                    <small id="endpoint-hint">
-                      В Docker Compose используется адрес самой панели. Другой
-                      сервер должен разрешать origin {window.location.origin}.
-                    </small>
-                  </div>
-                  <Show when={connectionError()}>
-                    <p role="alert" class="console__field-error">
-                      {connectionError()}
-                    </p>
-                  </Show>
-                  <button
-                    type="submit"
-                    disabled={checking()}
-                    class="console__button console__button--primary"
-                  >
-                    {checking()
-                      ? 'Проверяем сервер…'
-                      : ready()
-                        ? 'Проверить подключение'
-                        : 'Подключиться'}
-                    <Icon tone="light" name="arrow-right" />
-                  </button>
-                </form>
+          <Show
+            keyed
+            when={session()}
+            fallback={
+              <section role="status" class="console__empty">
+                <h1>
+                  {checking() ? 'Подключаемся к серверу…' : 'Сервер недоступен'}
+                </h1>
+                <p>{connectionError() || 'Ожидаем ответа сервера.'}</p>
+                <p>Подключение восстанавливается автоматически.</p>
+                <button
+                  disabled={checking()}
+                  class="console__button"
+                  onClick={() => void connect()}
+                >
+                  Повторить
+                </button>
               </section>
-              <section class="console__connection-notes">
-                <div class="console__connection-icon">
-                  <Icon size="large" name="server" />
-                </div>
-                <h2>Ключ остаётся на сервере</h2>
-                <p>
-                  Приватный ключ и RPC URL задаются в окружении бекенда. Панель
-                  получает публичные адреса и отправляет подтверждённые планы
-                  операций.
-                </p>
-                <div class="console__check-row">
-                  <Icon name="check" />
-                  <span>Проверка сети и владельца</span>
-                </div>
-                <div class="console__check-row">
-                  <Icon name="check" />
-                  <span>Проверка контрактов и журнала</span>
-                </div>
-                <div class="console__check-row">
-                  <Icon name="check" />
-                  <span>Отдельное подтверждение каждой операции</span>
-                </div>
-              </section>
-            </div>
-            <Show when={session()}>
-              {current => (
-                <section class="console__panel">
-                  <div class="console__section-heading">
-                    <h2>Публичная конфигурация</h2>
-                    <span class="console__badge">
-                      Chain ID {current().config.chainId}
-                    </span>
-                  </div>
-                  <dl class="console__details">
-                    <dt>Владелец · оплачивает газ</dt>
-                    <dd>
-                      <Address full value={current().config.owner} />
-                    </dd>
-                    <For each={Object.entries(current().config.addresses)}>
-                      {([label, value]) => (
-                        <>
-                          <dt>{label}</dt>
-                          <dd>
-                            <Address full value={value} />
-                          </dd>
-                        </>
-                      )}
-                    </For>
-                    <dt>Срок плана</dt>
-                    <dd>{current().config.previewTtlSeconds} с</dd>
-                  </dl>
-                </section>
-              )}
-            </Show>
-          </Show>
-          <Show keyed when={session()}>
+            }
+          >
             {current => (
-              <Show when={!connectionVisible()}>
+              <>
                 <Show when={section() === 'fund'}>
                   <FundView session={current} onAction={openAction} />
                 </Show>
@@ -553,7 +463,7 @@ export function ConsolePage() {
                     }
                   />
                 </Show>
-              </Show>
+              </>
             )}
           </Show>
           <footer class="console__footer">

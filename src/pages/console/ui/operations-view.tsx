@@ -17,7 +17,12 @@ function OperationDetail(props: OperationDetailProps) {
   const [error, setError] = createSignal('')
   async function resolve(event: SubmitEvent) {
     event.preventDefault()
-    if (busy() || !checked() || !props.session.ready()) {
+    if (
+      busy() ||
+      !checked() ||
+      !props.session.ready() ||
+      props.session.readOnly()
+    ) {
       return
     }
     if (!/^0x[\da-fA-F]{64}$/.test(hash().trim())) {
@@ -162,7 +167,12 @@ function OperationDetail(props: OperationDetailProps) {
           <button
             type="submit"
             class="console__button"
-            disabled={busy() || !checked() || !props.session.ready()}
+            disabled={
+              busy() ||
+              !checked() ||
+              !props.session.ready() ||
+              props.session.readOnly()
+            }
           >
             {busy() ? 'Проверка…' : 'Принять подтверждённую замену'}
           </button>

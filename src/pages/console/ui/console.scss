@@ -453,7 +453,29 @@
     display: inline-flex;
     max-width: 100%;
     align-items: center;
+    flex-wrap: wrap;
     vertical-align: middle;
+  }
+
+  &__amount {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    flex-wrap: wrap;
+    vertical-align: middle;
+  }
+
+  &__amount-value {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  &__copy-error {
+    flex-basis: 100%;
+    color: var(--color-danger);
+    font-size: 12px;
+    font-weight: 400;
+    overflow-wrap: anywhere;
   }
 
   &__address a {
@@ -823,33 +845,6 @@
     border-top: 1px solid var(--color-border);
   }
 
-  &__connection-layout {
-    display: grid;
-    grid-template-columns: 1.2fr 1fr;
-    gap: 50px;
-    margin: 36px 0;
-  }
-
-  &__connection-notes {
-    padding: 24px 0;
-  }
-
-  &__connection-icon {
-    margin-bottom: 20px;
-  }
-
-  &__connection-notes p {
-    color: var(--color-muted);
-  }
-
-  &__check-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin: 20px 0;
-    font-size: 13px;
-  }
-
   &__footer {
     display: flex;
     justify-content: space-between;
@@ -859,6 +854,17 @@
     border-top: 1px solid var(--color-border);
     color: var(--color-muted);
     font-size: 10px;
+  }
+
+  @media (width <= 1300px) {
+    &__assets {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    &__asset:nth-child(3) {
+      padding-left: 0;
+      border: 0;
+    }
   }
 
   @media (width <= 1150px) {
@@ -884,20 +890,6 @@
     &__callout {
       align-items: flex-start;
       flex-direction: column;
-    }
-
-    &__connection-layout {
-      grid-template-columns: 1fr;
-      gap: 0;
-    }
-
-    &__assets {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    &__asset:nth-child(3) {
-      padding-left: 0;
-      border: 0;
     }
 
     &__grid {
@@ -1062,11 +1054,13 @@
     }
 
     &__assets {
+      grid-template-columns: 1fr;
       gap: 24px 12px;
     }
 
     &__asset {
-      padding-left: 14px;
+      padding-left: 0;
+      border: 0;
     }
 
     &__asset strong {

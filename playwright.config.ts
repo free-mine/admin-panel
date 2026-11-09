@@ -9,12 +9,12 @@ export default defineConfig({
   webServer: {
     timeout: 30000,
     command: 'npm run dev',
-    url: 'http://127.0.0.1:5173',
+    url: 'http://localhost:5173',
     reuseExistingServer: !process.env.CI,
   },
   use: {
     trace: 'retain-on-failure',
-    baseURL: 'http://127.0.0.1:5173',
+    baseURL: 'http://localhost:5173',
     viewport: { width: 1440, height: 1040 },
     channel:
       process.env.PLAYWRIGHT_CHANNEL ||

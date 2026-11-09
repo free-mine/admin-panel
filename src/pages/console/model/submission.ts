@@ -42,19 +42,3 @@ export function savePending(value: PendingSubmission | undefined) {
     }
   }
 }
-
-export function savedEndpoint() {
-  try {
-    return localStorage.getItem('free-mine.endpoint') ?? window.location.origin
-  } catch {
-    return window.location.origin
-  }
-}
-
-export function saveEndpoint(value: string) {
-  try {
-    localStorage.setItem('free-mine.endpoint', value)
-  } catch {
-    /* The active connection still works without preferences storage. */
-  }
-}

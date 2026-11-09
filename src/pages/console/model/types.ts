@@ -15,6 +15,7 @@ export interface Session {
   refresh: () => void
   ready: Accessor<boolean>
   revision: Accessor<number>
+  readOnly: Accessor<boolean>
 }
 export interface ActionDraft {
   token0?: string

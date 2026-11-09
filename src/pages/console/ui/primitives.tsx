@@ -4,21 +4,53 @@ import { For, Show, createSignal } from 'solid-js'
 import { Icon } from '../../../shared/ui/icon'
 import { statusLabels } from '../model/actions'
 import type { RemoteData } from '../model/types'
-import type { TabsProps, PagerProps, AddressProps } from './types'
 import { dateTime, shortAddress } from '../../../shared/lib/format'
+import type {
+  TabsProps,
+  PagerProps,
+  AddressProps,
+  CopyButtonProps,
+} from './types'
 
-export function Address(props: AddressProps) {
-  const [copied, setCopied] = createSignal(false)
-  const [copyError, setCopyError] = createSignal(false)
+export function CopyButton(props: CopyButtonProps) {
+  const [copied, setCopied] = createSignal('')
+  const [copyError, setCopyError] = createSignal('')
+  const label = () =>
+    copied() === props.value
+      ? 'Скопировано'
+      : (props.label ?? `Скопировать ${props.value}`)
   async function copy() {
+    const value = props.value
     try {
-      await navigator.clipboard.writeText(props.value)
-      setCopied(true)
-      setCopyError(false)
+      await navigator.clipboard.writeText(value)
+      setCopied(value)
+      setCopyError('')
     } catch {
-      setCopyError(true)
+      setCopied('')
+      setCopyError(value)
     }
   }
+  return (
+    <>
+      <button
+        type="button"
+        title={label()}
+        aria-label={label()}
+        onClick={() => void copy()}
+        class="console__icon-button"
+      >
+        <Icon name={copied() === props.value ? 'check' : 'copy'} />
+      </button>
+      <Show when={copyError() === props.value}>
+        <small role="status" class="console__copy-error">
+          Не удалось скопировать. Скопируйте вручную: {props.value}
+        </small>
+      </Show>
+    </>
+  )
+}
+
+export function Address(props: AddressProps) {
   return (
     <span class="console__address">
       <a
@@ -33,18 +65,7 @@ export function Address(props: AddressProps) {
       >
         {props.full ? props.value : shortAddress(props.value)}
       </a>
-      <button
-        type="button"
-        onClick={() => void copy()}
-        class="console__icon-button"
-        title={copied() ? 'Скопировано' : `Скопировать ${props.value}`}
-        aria-label={copied() ? 'Скопировано' : `Скопировать ${props.value}`}
-      >
-        <Icon name={copied() ? 'check' : 'copy'} />
-      </button>
-      <Show when={copyError()}>
-        <small role="status">Скопируйте адрес из ссылки.</small>
-      </Show>
+      <CopyButton value={props.value} />
     </span>
   )
 }

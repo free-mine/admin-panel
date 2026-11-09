@@ -9,24 +9,6 @@ export class ApiError extends Error {
   }
 }
 
-export function normalizeEndpoint(value: string) {
-  const url = new URL(value.trim() || window.location.origin)
-  if (
-    !['http:', 'https:'].includes(url.protocol) ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash ||
-    url.pathname !== '/'
-  ) {
-    throw new Error('Укажите адрес HTTP(S) без пути, пароля и параметров.')
-  }
-  if (window.location.protocol === 'https:' && url.protocol !== 'https:') {
-    throw new Error('Для этой страницы требуется HTTPS-адрес сервера.')
-  }
-  return url.origin
-}
-
 export async function request<T>(
   base: string,
   path: string,

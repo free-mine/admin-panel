@@ -1,12 +1,13 @@
 import { For, Show, createSignal } from 'solid-js'
 
+import { Amount } from './amount'
 import { BalanceStrip } from './balances'
 import { createRemote } from '../model/remote'
 import { Icon } from '../../../shared/ui/icon'
 import type { ViewProps } from '../model/types'
+import { units, dateTime } from '../../../shared/lib/format'
 import { Tabs, Pager, Address, DataState } from './primitives'
 import type { Fund, Shift, Balances, ClaimPage } from '../api/types'
-import { units, decimal, dateTime } from '../../../shared/lib/format'
 
 export function FundView(props: ViewProps) {
   const [tab, setTab] = createSignal('shifts')
@@ -112,9 +113,9 @@ export function FundView(props: ViewProps) {
                   <div>
                     <p>Газ владельца</p>
                     <strong>
-                      {balances.data()
-                        ? decimal(balances.data()?.ownerAvax ?? '')
-                        : '—'}
+                      <Show fallback="—" when={balances.data()}>
+                        {balance => <Amount value={balance().ownerAvax} />}
+                      </Show>
                     </strong>{' '}
                     <span>AVAX</span>
                     <small>

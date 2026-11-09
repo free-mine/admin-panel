@@ -1,12 +1,13 @@
 import { For, Show, createSignal } from 'solid-js'
 
+import { Amount } from './amount'
 import { BalanceStrip } from './balances'
 import { publicError } from '../model/errors'
 import { createRemote } from '../model/remote'
 import type { ViewProps } from '../model/types'
-import { units } from '../../../shared/lib/format'
 import { Tabs, Pager, DataState } from './primitives'
 import type { Aave, PositionPage } from '../api/types'
+import { units, fromUnits } from '../../../shared/lib/format'
 
 export function CapitalView(props: ViewProps) {
   const [tab, setTab] = createSignal('tokens')
@@ -53,19 +54,34 @@ export function CapitalView(props: ViewProps) {
                   <div>
                     <p>Залог, USD</p>
                     <strong>
-                      {units(data().totalCollateralBase, data().baseDecimals)}
+                      <Amount
+                        value={fromUnits(
+                          data().totalCollateralBase,
+                          data().baseDecimals,
+                        )}
+                      />
                     </strong>
                   </div>
                   <div>
                     <p>Долг, USD</p>
                     <strong>
-                      {units(data().totalDebtBase, data().baseDecimals)}
+                      <Amount
+                        value={fromUnits(
+                          data().totalDebtBase,
+                          data().baseDecimals,
+                        )}
+                      />
                     </strong>
                   </div>
                   <div>
                     <p>Доступный заём, USD</p>
                     <strong>
-                      {units(data().availableBorrowsBase, data().baseDecimals)}
+                      <Amount
+                        value={fromUnits(
+                          data().availableBorrowsBase,
+                          data().baseDecimals,
+                        )}
+                      />
                     </strong>
                   </div>
                 </div>
@@ -98,12 +114,22 @@ export function CapitalView(props: ViewProps) {
                         <dl class="console__details">
                           <dt>Внесено</dt>
                           <dd>
-                            {units(reserve.supplied, reserve.decimals)}{' '}
+                            <Amount
+                              value={fromUnits(
+                                reserve.supplied,
+                                reserve.decimals,
+                              )}
+                            />{' '}
                             {reserve.symbol}
                           </dd>
                           <dt>Долг</dt>
                           <dd>
-                            {units(reserve.variableDebt, reserve.decimals)}{' '}
+                            <Amount
+                              value={fromUnits(
+                                reserve.variableDebt,
+                                reserve.decimals,
+                              )}
+                            />{' '}
                             {reserve.symbol}
                           </dd>
                           <dt>Ставка предложения, APR</dt>
@@ -226,17 +252,21 @@ export function CapitalView(props: ViewProps) {
                                 </dd>
                                 <dt>Начислено {item().token0.symbol}</dt>
                                 <dd>
-                                  {units(
-                                    item().tokensOwed0,
-                                    item().token0.decimals,
-                                  )}
+                                  <Amount
+                                    value={fromUnits(
+                                      item().tokensOwed0,
+                                      item().token0.decimals,
+                                    )}
+                                  />
                                 </dd>
                                 <dt>Начислено {item().token1.symbol}</dt>
                                 <dd>
-                                  {units(
-                                    item().tokensOwed1,
-                                    item().token1.decimals,
-                                  )}
+                                  <Amount
+                                    value={fromUnits(
+                                      item().tokensOwed1,
+                                      item().token1.decimals,
+                                    )}
+                                  />
                                 </dd>
                               </dl>
                               <div class="console__actions">
