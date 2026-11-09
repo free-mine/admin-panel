@@ -13,6 +13,5 @@ services:
     ports:
       - '127.0.0.1:5175:80'
 
-# В будущем вместо volume будет дополнительный сервер.
 volumes:
   backend-data:
