@@ -3,6 +3,13 @@ export interface AddressProps {
   full?: boolean
   transaction?: boolean
 }
+export interface CopyButtonProps {
+  value: string
+  label?: string
+}
+export interface AmountProps {
+  value: string
+}
 export interface PagerProps {
   offset: number
   label?: string

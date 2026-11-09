@@ -4,6 +4,57 @@ import { test, expect } from '@playwright/test'
 
 import { fund, mockApi } from './fixture'
 
+test('WebSocket uses localhost while the page stays on its numeric address', async ({
+  page,
+}) => {
+  const state = await mockApi(page)
+  state.readOnly = true
+  // Vite can bind localhost to IPv6; serve its assets for the IPv4 page too.
+  await page.route('http://127.0.0.1:5173/**', async route => {
+    const url = new URL(route.request().url())
+    if (/^\/(v1\/|health$|ready$)/.test(url.pathname)) {
+      return route.fallback()
+    }
+    url.hostname = 'localhost'
+    return route.fulfill({ response: await route.fetch({ url: url.href }) })
+  })
+  await page.goto('http://127.0.0.1:5173/#capital')
+  await expect(
+    page.getByRole('heading', { exact: true, name: 'Капитал' }),
+  ).toBeVisible()
+  await expect(page).toHaveURL('http://127.0.0.1:5173/#capital')
+  expect(state.socketUrls).toEqual(['ws://localhost:5173/v1/ws'])
+  await expect(
+    page.getByText('Обновления в реальном времени', { exact: true }),
+  ).toBeVisible()
+})
+
+test('connection is automatic and ignores the former URL preference', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.addInitScript(() =>
+    localStorage.setItem('free-mine.endpoint', 'http://unused.example:9999'),
+  )
+  const origins: string[] = []
+  page.on('request', request => {
+    const url = new URL(request.url())
+    if (/^\/(v1\/|health$|ready$)/.test(url.pathname)) {
+      origins.push(url.origin)
+    }
+  })
+  await page.goto('/#connection')
+  await expect(
+    page.getByRole('heading', { exact: true, name: 'Фонд' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('link', { exact: true, name: 'Подключение' }),
+  ).toHaveCount(0)
+  await expect(page.getByLabel('Адрес API')).toHaveCount(0)
+  expect(origins.length).toBeGreaterThan(0)
+  expect(new Set(origins)).toEqual(new Set([new URL(page.url()).origin]))
+})
+
 test('slow reads finish even when a polling tick occurs', async ({ page }) => {
   await mockApi(page)
   await page.clock.install()
@@ -99,6 +150,105 @@ async function funding(page: Page) {
   ).toBeVisible()
 }
 
+test('readonly server supports data, events and previews but cannot submit', async ({
+  page,
+}) => {
+  const state = await mockApi(page)
+  state.readOnly = true
+  await funding(page)
+  await expect(
+    page.getByText('Режим только чтения', { exact: true }),
+  ).toBeVisible()
+  await expect(page.getByRole('checkbox')).toBeDisabled()
+  await expect(
+    page.getByRole('button', { name: 'Подтвердить и выполнить' }),
+  ).toBeDisabled()
+  expect(state.previews).toHaveLength(1)
+  expect(state.submissions).toHaveLength(0)
+  expect(state.connections).toBe(1)
+  await page.keyboard.press('Escape')
+  await expect(page.getByText('50\u00a0000', { exact: true })).toBeVisible()
+})
+
+test('readiness mode changes disable an already accepted plan', async ({
+  page,
+}) => {
+  const state = await mockApi(page)
+  await page.clock.install()
+  await funding(page)
+  await page.getByRole('checkbox').check()
+  const submit = page.getByRole('button', { name: 'Подтвердить и выполнить' })
+  await expect(submit).toBeEnabled()
+  state.readOnly = true
+  await page.clock.fastForward(16000)
+  await expect(submit).toBeDisabled()
+  expect(state.submissions).toHaveLength(0)
+  state.readOnly = false
+  await page.clock.fastForward(16000)
+  await expect(submit).toBeEnabled()
+})
+
+test('readonly mode preserves pending submission until writable recovery', async ({
+  page,
+}) => {
+  const state = await mockApi(page)
+  await page.clock.install()
+  state.loseSubmit = true
+  await funding(page)
+  await page.getByRole('checkbox').check()
+  await page.getByRole('button', { name: 'Подтвердить и выполнить' }).click()
+  await expect(
+    page.getByText('Ответ на отправку не получен.', { exact: false }),
+  ).toBeVisible()
+  const pair = state.submissions[0]
+  state.readOnly = true
+  await page.reload()
+  const recover = page.getByRole('button', {
+    exact: true,
+    name: 'Проверить отправку',
+  })
+  await expect(
+    page.getByText('Режим только чтения', { exact: true }),
+  ).toBeVisible()
+  await expect(recover).toBeDisabled()
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem('free-mine.pending-operation'),
+    ),
+  ).toContain(pair.requestId)
+  expect(state.submissions).toHaveLength(1)
+  state.readOnly = false
+  await page.clock.fastForward(16000)
+  await expect(recover).toBeEnabled()
+  await recover.click()
+  await expect(
+    page.getByRole('heading', { name: 'Исполнение по шагам' }),
+  ).toBeVisible()
+  expect(state.submissions).toEqual([pair, pair])
+  expect(state.operations).toHaveLength(1)
+})
+
+test('readonly mode blocks accepting an external transaction replacement', async ({
+  page,
+}) => {
+  const state = await mockApi(page)
+  await funding(page)
+  await page.getByRole('checkbox').check()
+  await page.getByRole('button', { name: 'Подтвердить и выполнить' }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Исполнение по шагам' }),
+  ).toBeVisible()
+  state.operations[0].status = 'needs_attention'
+  state.readOnly = true
+  await page.reload()
+  await page.getByLabel('Хэш подтверждённой замены').fill(`0x${'2'.repeat(64)}`)
+  await page.getByRole('checkbox').check()
+  await expect(
+    page.getByRole('button', { name: 'Принять подтверждённую замену' }),
+  ).toBeDisabled()
+  expect(state.operations[0].status).toBe('needs_attention')
+})
+
 test('funding: exact amounts, explicit consent, receipt and gas', async ({
   page,
 }) => {
@@ -193,15 +343,16 @@ test('unready server never enables actions; last balances survive read failure',
 }) => {
   const state = await mockApi(page)
   state.ready = false
+  await page.clock.install()
   await page.goto('/')
   await expect(
-    page.getByRole('heading', { exact: true, name: 'Подключение' }),
+    page.getByRole('heading', { exact: true, name: 'Сервер недоступен' }),
   ).toBeVisible()
   await expect(
     page.getByRole('button', { name: 'Финансировать смену' }),
   ).toHaveCount(0)
   state.ready = true
-  await page.getByRole('button', { exact: true, name: 'Подключиться' }).click()
+  await page.clock.fastForward(16000)
   await expect(page.getByText('50 000', { exact: true })).toBeVisible()
   state.balanceError = true
   state.snapshot()
@@ -230,13 +381,7 @@ for (const width of [390, 900, 1440]) {
       fullPage: true,
       path: `.tmp/screenshots/fund-${width}.png`,
     })
-    for (const section of [
-      'capital',
-      'operations',
-      'successors',
-      'connection',
-      'fund',
-    ]) {
+    for (const section of ['capital', 'operations', 'successors', 'fund']) {
       await page.evaluate(value => {
         window.location.hash = value
       }, section)

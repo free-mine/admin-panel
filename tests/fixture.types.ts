@@ -7,8 +7,10 @@ import type {
 export interface MockState {
   ttl: number
   ready: boolean
+  readOnly: boolean
   loseSubmit: boolean
   connections: number
+  socketUrls: string[]
   changedPlan: boolean
   snapshot: () => void
   balanceError: boolean

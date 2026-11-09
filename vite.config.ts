@@ -11,7 +11,7 @@ export default defineConfig(() => {
 
   return {
     plugins: [solid()],
-    server: { proxy, port: 5173, strictPort: true, host: '127.0.0.1' },
-    preview: { proxy, port: 4173, strictPort: true, host: '127.0.0.1' },
+    server: { proxy, port: 5173, strictPort: true, host: 'localhost' },
+    preview: { proxy, port: 4173, strictPort: true, host: 'localhost' },
   }
 })

@@ -35,8 +35,10 @@ const messages: Record<string, string> = {
     'Сервер подключён к другой сети. Требуется Avalanche C-Chain (43114).',
   PLAN_CHANGED:
     'Состояние изменилось. Подготовьте новый план и проверьте его ещё раз.',
+  READ_ONLY:
+    'Сервер работает только для чтения. Для выполнения операций нужен ключ владельца на сервере.',
   ORIGIN_NOT_ALLOWED:
-    'Адрес этой страницы не разрешён сервером. Добавьте его в ALLOWED_ORIGINS.',
+    'Откройте панель через localhost. Сервер разрешает любой порт localhost, но не 127.0.0.1.',
 }
 
 export function publicError(error: PublicError) {
