@@ -27,6 +27,23 @@ export interface Readiness {
   status: string
   readOnly: boolean
 }
+export interface Synchronization {
+  journal: {
+    pending: number
+    blocked: boolean
+    connected: boolean
+    historyLoaded: boolean
+    lastError?: PublicError
+  }
+  state: {
+    available: boolean
+    refreshPending: boolean
+    snapshotBlock: number | null
+    requiredBlock: number | null
+    lastCheckedAt: number | null
+    lastError: PublicError | null
+  }
+}
 export interface Balances {
   owner: string
   oreVein: string
@@ -89,14 +106,20 @@ export interface Aave {
 }
 export interface Position {
   fee: number
-  token0: Token
-  token1: Token
+  tokenA: Token
+  tokenB: Token
   tokenId: string
-  tickLower: number
-  tickUpper: number
+  inRange: boolean
   liquidity: string
-  tokensOwed0: string
-  tokensOwed1: string
+  tokensOwedA: string
+  tokensOwedB: string
+  currentPrice: string
+  range: {
+    lowerPrice: string
+    upperPrice: string
+    lowerDistancePercent: string | null
+    upperDistancePercent: string | null
+  }
 }
 export interface PositionPage {
   total: string

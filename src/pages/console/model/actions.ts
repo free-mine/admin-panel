@@ -171,7 +171,8 @@ export const actions: Record<ActionKind, ActionDefinition> = {
   },
   'uniswap.mint': {
     title: 'Создать позицию Uniswap',
-    description: 'NFT и средства позиции будут принадлежать OreVein.',
+    description:
+      'Укажите суммы обоих активов и минимальное расстояние от текущей цены до границ. Сервер подберёт диапазон с использованием не менее 99% каждого актива. NFT принадлежит OreVein.',
     fields: [
       { ...token, key: 'tokenA', label: 'Токен A' },
       { ...token, key: 'tokenB', label: 'Токен B', default: 'WAVAX' },
@@ -190,29 +191,11 @@ export const actions: Record<ActionKind, ActionDefinition> = {
         ],
       },
       {
-        key: 'range',
-        kind: 'select',
-        default: 'full',
-        label: 'Диапазон',
-        options: [
-          { value: 'full', label: 'Полный диапазон' },
-          { value: 'custom', label: 'Задать тики' },
-        ],
-      },
-      {
-        max: 887272,
-        min: -887272,
-        kind: 'integer',
-        key: 'tickLower',
-        label: 'Нижний тик',
-        hint: 'Тики задаются в порядке token0/token1 по адресам и должны соответствовать шагу пула.',
-      },
-      {
-        max: 887272,
-        min: -887272,
-        kind: 'integer',
-        key: 'tickUpper',
-        label: 'Верхний тик',
+        default: '10',
+        kind: 'decimal',
+        key: 'minBoundaryPercent',
+        label: 'Минимальное расстояние до границ, %',
+        hint: 'Больше 0 и меньше 100, до 6 знаков после точки. Расстояние до каждой границы — не меньше указанного; диапазон может быть несимметричным.',
       },
       {
         optional: true,
@@ -224,17 +207,6 @@ export const actions: Record<ActionKind, ActionDefinition> = {
       slippage,
     ],
   },
-}
-
-export function visibleFields(
-  kind: ActionKind,
-  values: Record<string, string>,
-) {
-  return actions[kind].fields.filter(
-    field =>
-      !['tickLower', 'tickUpper'].includes(field.key) ||
-      values.range === 'custom',
-  )
 }
 
 export function initialValues(draft: ActionDraft) {
@@ -254,7 +226,14 @@ export function validateAction(
 ): { action: Action; errors: Record<string, string> } {
   const errors: Record<string, string> = {}
   const params: Action['params'] = {}
-  for (const field of visibleFields(draft.kind, values)) {
+  const amountTokens: Record<string, string | undefined> = {
+    amount0: draft.token0,
+    amount1: draft.token1,
+    amountA: values.tokenA,
+    amountB: values.tokenB,
+    amount: values.token ?? values.tokenIn,
+  }
+  for (const field of actions[draft.kind].fields) {
     const value = values[field.key]?.trim() ?? ''
     if (!value && field.optional) {
       continue
@@ -263,7 +242,26 @@ export function validateAction(
       if (!value) {
         throw new Error('Заполните поле.')
       }
-      if (field.kind === 'decimal') {
+      if (field.key === 'minBoundaryPercent') {
+        if (
+          !/^(?:0|[1-9]\d?)(?:\.\d{1,6})?$/.test(value) ||
+          !/[1-9]/.test(value)
+        ) {
+          throw new Error(
+            'Введите процент больше 0 и меньше 100, до 6 знаков после точки, без ведущих нулей.',
+          )
+        }
+      } else if (field.key === 'initialPrice') {
+        if (
+          !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value) ||
+          value.length > 160 ||
+          !/[1-9]/.test(value)
+        ) {
+          throw new Error(
+            'Введите положительную цену с точкой, без ведущих нулей и экспоненты.',
+          )
+        }
+      } else if (field.kind === 'decimal') {
         if (
           draft.kind === 'aave.withdraw' &&
           field.key === 'amount' &&
@@ -272,24 +270,14 @@ export function validateAction(
           params[field.key] = value
           continue
         }
-        const symbol =
-          field.key === 'amountA'
-            ? values.tokenA
-            : field.key === 'amountB'
-              ? values.tokenB
-              : field.key === 'amount0'
-                ? draft.token0
-                : field.key === 'amount1'
-                  ? draft.token1
-                  : (values.token ?? values.tokenIn)
-        const decimals = ['price', 'initialPrice'].includes(field.key)
-          ? 18
-          : (config.tokens.find(item => item.symbol === symbol)?.decimals ?? 18)
+        const decimals =
+          field.key === 'price'
+            ? 18
+            : (config.tokens.find(
+                item => item.symbol === amountTokens[field.key],
+              )?.decimals ?? 18)
         const parsed = toUnits(value, decimals)
-        if (
-          parsed === 0n &&
-          !['amountA', 'amountB', 'amount0', 'amount1'].includes(field.key)
-        ) {
+        if (parsed === 0n && !['amount0', 'amount1'].includes(field.key)) {
           throw new Error('Значение должно быть больше нуля.')
         }
         if (field.key === 'price' && fund) {
@@ -349,12 +337,7 @@ export function validateAction(
       if (field.key === 'uri' && value.length > 2048) {
         throw new Error('Не более 2 048 символов.')
       }
-      params[field.key] = [
-        'slippageBps',
-        'fee',
-        'tickLower',
-        'tickUpper',
-      ].includes(field.key)
+      params[field.key] = ['slippageBps', 'fee'].includes(field.key)
         ? Number(value)
         : value
     } catch (cause) {
@@ -367,12 +350,6 @@ export function validateAction(
   }
   if (values.tokenA && values.tokenA === values.tokenB) {
     errors.tokenB = 'Токены должны различаться.'
-  }
-  if (
-    values.range === 'custom' &&
-    Number(values.tickLower) >= Number(values.tickUpper)
-  ) {
-    errors.tickUpper = 'Верхний тик должен быть больше нижнего.'
   }
   return { errors, action: { params, kind: draft.kind } }
 }

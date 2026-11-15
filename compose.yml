@@ -2,6 +2,11 @@ services:
   backend:
     image: ghcr.io/free-mine/admin-server
     env_file: .env
+    environment:
+      PUBLIC_SERVER_URL: ${PUBLIC_SERVER_URL:?Set PUBLIC_SERVER_URL in .env}
+      PUBLIC_SERVER_KEY: ${PUBLIC_SERVER_KEY:-}
+    volumes:
+      - backend-data:/app/data
     stop_grace_period: 10s
 
   frontend:
@@ -10,3 +15,6 @@ services:
       dockerfile: client/Dockerfile
     ports:
       - '127.0.0.1:5175:80'
+
+volumes:
+  backend-data:

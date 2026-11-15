@@ -113,12 +113,13 @@ export function DataState<T>(props: {
           Загрузка данных…
         </div>
       </Show>
-      <Show when={props.remote.updated() && props.remote.error()}>
-        <p class="console__freshness">
-          {props.remote.error() ? 'Последний успешный снимок' : 'Обновлено'}:{' '}
-          {dateTime(props.remote.updated() ?? 0)}
-          {props.remote.loading() ? ' · обновление…' : ''}
-        </p>
+      <Show when={props.remote.error() ? props.remote.updated() : undefined}>
+        {updated => (
+          <p class="console__freshness">
+            Последний успешный снимок: {dateTime(updated())}
+            {props.remote.loading() ? ' · обновление…' : ''}
+          </p>
+        )}
       </Show>
       {props.children}
     </>

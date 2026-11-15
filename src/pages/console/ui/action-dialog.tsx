@@ -1,25 +1,19 @@
 import { For, Show, onMount, untrack, onCleanup, createSignal } from 'solid-js'
 
 import { DataState } from './primitives'
+import { request } from '../../../shared/api'
 import { Icon } from '../../../shared/ui/icon'
 import { errorMessage } from '../model/errors'
 import { createRemote } from '../model/remote'
-import { request, ApiError } from '../../../shared/api'
+import { isSubmissionRejected } from '../model/submission'
 import type { Fund, Shift, Preview, Operation } from '../api/types'
 import type { Session, ActionDraft, PendingSubmission } from '../model/types'
 import { PlanDetails, RequestDetails, ApprovalDetails } from './plan-details'
-import {
-  units,
-  decimal,
-  toUnits,
-  dateTime,
-  fromUnits,
-} from '../../../shared/lib/format'
+import { units, decimal, toUnits, dateTime } from '../../../shared/lib/format'
 import {
   actions,
   stepLabels,
   initialValues,
-  visibleFields,
   validateAction,
 } from '../model/actions'
 
@@ -61,22 +55,30 @@ export function ActionDialog(props: {
   )
   const remaining = () =>
     Math.max(0, Math.ceil(((preview()?.expiresAt ?? 0) - now()) / 1000))
+  const canPrepare = () => !busy() && props.session.ready() && !uncertain()
+  const canSubmit = () =>
+    !busy() &&
+    props.session.ready() &&
+    !props.session.readOnly() &&
+    (!!uncertain() || (accepted() && remaining() > 0))
   const dollar = () =>
     props.session.config.tokens.find(
       item => item.address.toLowerCase() === fund.data()?.dollar.toLowerCase(),
     )
   const funding = () => {
+    const closed = last.data()
+    const token = dollar()
+    if (!closed || !token || !values().price) {
+      return '—'
+    }
     try {
-      return last.data() && values().price && dollar()
-        ? units(
-            String(
-              (BigInt(last.data()?.oreAmount ?? '0') *
-                toUnits(values().price, 18)) /
-                (10n ** 18n * 10n ** BigInt(18 - (dollar()?.decimals ?? 18))),
-            ),
-            dollar()?.decimals,
-          )
-        : '—'
+      return units(
+        String(
+          (BigInt(closed.oreAmount) * toUnits(values().price, 18)) /
+            (10n ** 18n * 10n ** BigInt(18 - token.decimals)),
+        ),
+        token.decimals,
+      )
     } catch {
       return '—'
     }
@@ -98,7 +100,7 @@ export function ActionDialog(props: {
   })
   async function prepare(event?: SubmitEvent) {
     event?.preventDefault()
-    if (busy() || !props.session.ready() || uncertain()) {
+    if (!canPrepare()) {
       return
     }
     const validated = validateAction(
@@ -145,13 +147,7 @@ export function ActionDialog(props: {
   }
   async function submit() {
     const plan = preview()
-    if (
-      busy() ||
-      !props.session.ready() ||
-      props.session.readOnly() ||
-      !plan ||
-      (!uncertain() && (!accepted() || !remaining()))
-    ) {
+    if (!canSubmit() || !plan) {
       return
     }
     const pending = uncertain() ?? {
@@ -173,12 +169,7 @@ export function ActionDialog(props: {
       props.onPending(undefined)
       props.onSubmitted(operation)
     } catch (cause) {
-      if (
-        cause instanceof ApiError &&
-        cause.detail.code !== 'READ_ONLY' &&
-        cause.status >= 400 &&
-        cause.status < 500
-      ) {
+      if (isSubmissionRejected(cause)) {
         props.onPending(undefined)
         setUncertain(undefined)
         setPreview(undefined)
@@ -296,7 +287,7 @@ export function ActionDialog(props: {
               </p>
             </Show>
             <div class="console__form-grid">
-              <For each={visibleFields(props.draft.kind, values())}>
+              <For each={actions[props.draft.kind].fields}>
                 {field => (
                   <div class="console__field">
                     <label for={`field-${field.key}`}>
@@ -337,6 +328,7 @@ export function ActionDialog(props: {
                       <select
                         id={`field-${field.key}`}
                         value={values()[field.key]}
+                        aria-invalid={!!errors()[field.key]}
                         aria-describedby={`hint-${field.key}`}
                         onChange={event =>
                           setValues({
@@ -416,7 +408,7 @@ export function ActionDialog(props: {
               <span>Следующий шаг — проверка плана.</span>
               <button
                 type="submit"
-                disabled={busy() || !props.session.ready()}
+                disabled={!canPrepare()}
                 class="console__button console__button--primary"
               >
                 {busy() ? 'Подготовка плана…' : 'Проверить операцию'}
@@ -521,14 +513,9 @@ export function ActionDialog(props: {
                 when={!remaining() && !uncertain()}
                 fallback={
                   <button
+                    disabled={!canSubmit()}
                     onClick={() => void submit()}
                     class="console__button console__button--primary"
-                    disabled={
-                      busy() ||
-                      !props.session.ready() ||
-                      props.session.readOnly() ||
-                      (!uncertain() && (!accepted() || !remaining()))
-                    }
                   >
                     {busy()
                       ? 'Отправка…'
@@ -539,8 +526,8 @@ export function ActionDialog(props: {
                 }
               >
                 <button
+                  disabled={!canPrepare()}
                   onClick={() => void prepare()}
-                  disabled={busy() || !props.session.ready()}
                   class="console__button console__button--primary"
                 >
                   Пересоздать план
@@ -552,7 +539,7 @@ export function ActionDialog(props: {
               <p class="console__mono">{plan().id}</p>
               <p>
                 Комиссия в wei:{' '}
-                {fromUnits(toUnits(plan().knownGasEstimateAvax, 18), 0)}
+                {toUnits(plan().knownGasEstimateAvax, 18).toString()}
               </p>
             </details>
           </>

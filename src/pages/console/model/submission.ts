@@ -1,6 +1,16 @@
+import { ApiError } from '../../../shared/api'
 import type { PendingSubmission } from './types'
 
 const key = 'free-mine.pending-operation'
+
+export function isSubmissionRejected(cause: unknown) {
+  return (
+    cause instanceof ApiError &&
+    cause.detail.code !== 'READ_ONLY' &&
+    cause.status >= 400 &&
+    cause.status < 500
+  )
+}
 
 export function readPending(): PendingSubmission | undefined {
   try {

@@ -15,6 +15,8 @@ const labels: Record<string, string> = {
   tokenIn: 'Отдать',
   token0: 'Токен 0',
   token1: 'Токен 1',
+  tokenA: 'Токен A',
+  tokenB: 'Токен B',
   blockNumber: 'Блок',
   tokenOut: 'Получить',
   fee: 'Комиссия пула',
@@ -27,32 +29,85 @@ const labels: Record<string, string> = {
   deadline: 'Крайний срок',
   tickUpper: 'Верхний тик',
   nftExists: 'NFT сохранён',
+  budgetA: 'Бюджет токена A',
+  budgetB: 'Бюджет токена B',
   quotedOut: 'Ожидаемый выход',
   minimum0: 'Минимум токена 0',
   minimum1: 'Минимум токена 1',
+  currentPrice: 'Текущая цена',
   maximum0: 'Максимум токена 0',
   maximum1: 'Максимум токена 1',
   minimumOut: 'Минимальный выход',
   decimals: 'Знаков после запятой',
   interestRateMode: 'Режим ставки',
   initialize: 'Инициализация пула',
+  inRange: 'Цена внутри диапазона',
   timestamp: 'Дата получения права',
   error: 'Ошибка чтения результата',
+  lowerPrice: 'Нижняя граница цены',
+  upperPrice: 'Верхняя граница цены',
   capitalHolder: 'Держатель капитала',
   withdrawAll: 'Вывести весь остаток',
   slippageBps: 'Проскальзывание, bps',
   previousTimestamp: 'Предыдущая дата',
   sqrtPriceX96: 'Цена пула, sqrtPriceX96',
+  minimumA: 'Минимум к внесению токена A',
+  minimumB: 'Минимум к внесению токена B',
+  leftoverA: 'Ожидаемый остаток токена A',
+  leftoverB: 'Ожидаемый остаток токена B',
+  desiredA: 'Максимум к внесению токена A',
+  desiredB: 'Максимум к внесению токена B',
+  expectedA: 'Ожидаемое внесение токена A',
+  expectedB: 'Ожидаемое внесение токена B',
+  decimalsA: 'Знаков после запятой у токена A',
+  decimalsB: 'Знаков после запятой у токена B',
   liquidity: 'Ликвидность (единицы протокола)',
+  utilizationPercentA: 'Использование токена A',
+  utilizationPercentB: 'Использование токена B',
   tokensOwed0: 'Начисления токена 0 (мин. единицы)',
   tokensOwed1: 'Начисления токена 1 (мин. единицы)',
   maximumFunding: 'Максимальная сумма финансирования',
+  lowerDistancePercent: 'Расстояние до нижней границы',
+  upperDistancePercent: 'Расстояние до верхней границы',
+  minBoundaryPercent: 'Минимальное расстояние до границ',
+  minimumUtilizationPercent: 'Минимальное использование каждого актива',
+}
+
+const amountTokens: Record<string, string> = {
+  amount: 'token',
+  budgetA: 'tokenA',
+  budgetB: 'tokenB',
+  desiredA: 'tokenA',
+  desiredB: 'tokenB',
+  minimumA: 'tokenA',
+  minimumB: 'tokenB',
+  maximum0: 'token0',
+  minimum0: 'token0',
+  maximum1: 'token1',
+  minimum1: 'token1',
+  expectedA: 'tokenA',
+  expectedB: 'tokenB',
+  leftoverA: 'tokenA',
+  leftoverB: 'tokenB',
+  amountIn: 'tokenIn',
+  quotedOut: 'tokenOut',
+  minimumOut: 'tokenOut',
+  maximumFunding: 'token',
 }
 
 export function PlanDetails(props: {
   config: Config
   summary: Record<string, unknown>
 }) {
+  const entries = () =>
+    Object.entries(props.summary).flatMap<[string, unknown]>(([key, value]) =>
+      ['range', 'amounts'].includes(key) &&
+      value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value)
+        ? Object.entries(value)
+        : [[key, value]],
+    )
   function renderValue(key: string, value: unknown): string {
     if (value === null || value === undefined) {
       return '—'
@@ -68,24 +123,28 @@ export function PlanDetails(props: {
     if (key === 'price') {
       return `${units(String(value))} за ORE`
     }
+    if (['currentPrice', 'lowerPrice', 'upperPrice'].includes(key)) {
+      return `${decimal(String(value))} ${String(props.summary.tokenB)} за 1 ${String(props.summary.tokenA)}`
+    }
+    if (
+      [
+        'minBoundaryPercent',
+        'minimumUtilizationPercent',
+        'lowerDistancePercent',
+        'upperDistancePercent',
+        'utilizationPercentA',
+        'utilizationPercentB',
+      ].includes(key)
+    ) {
+      return `${decimal(String(value))}%`
+    }
     if (key === 'fee') {
       return `${units(String(value), 4)}%`
     }
     if (key === 'interestRateMode' && value === 2) {
       return 'Переменная'
     }
-    const symbol =
-      key === 'amountIn'
-        ? props.summary.tokenIn
-        : ['quotedOut', 'minimumOut'].includes(key)
-          ? props.summary.tokenOut
-          : ['maximum0', 'minimum0'].includes(key)
-            ? props.summary.token0
-            : ['maximum1', 'minimum1'].includes(key)
-              ? props.summary.token1
-              : ['amount', 'maximumFunding'].includes(key)
-                ? props.summary.token
-                : undefined
+    const symbol = props.summary[amountTokens[key]]
     const token = props.config.tokens.find(item => item.symbol === symbol)
     if (key === 'amount' && props.summary.withdrawAll) {
       return 'Весь доступный остаток'
@@ -103,7 +162,7 @@ export function PlanDetails(props: {
   }
   return (
     <dl class="console__details">
-      <For each={Object.entries(props.summary)}>
+      <For each={entries()}>
         {([key, value]) => (
           <>
             <dt>{labels[key] ?? key}</dt>

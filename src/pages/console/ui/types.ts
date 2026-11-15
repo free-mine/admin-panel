@@ -1,3 +1,12 @@
+import type { Balances } from '../api/types'
+import type { RemoteData } from '../model/types'
+
+export interface BalanceStripProps {
+  oreVein: string
+  expanded?: boolean
+  remote: RemoteData<Balances>
+}
+
 export interface AddressProps {
   value: string
   full?: boolean
