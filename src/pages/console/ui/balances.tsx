@@ -1,26 +1,20 @@
 import { For, Show } from 'solid-js'
 
 import { Amount } from './amount'
-import type { Balances } from '../api/types'
-import type { Session } from '../model/types'
-import { createRemote } from '../model/remote'
+import type { BalanceStripProps } from './types'
 import { Address, DataState } from './primitives'
 import { tokenUrls } from '../../../shared/assets'
 import { fromUnits } from '../../../shared/lib/format'
 
-export function BalanceStrip(props: { session: Session; expanded?: boolean }) {
-  const balances = createRemote<Balances>(
-    () => props.session,
-    () => '/v1/balances',
-  )
+export function BalanceStrip(props: BalanceStripProps) {
   return (
     <section>
       <div class="console__section-heading">
         <h2>Капитал OreVein</h2>
-        <Address value={props.session.config.addresses.oreVein} />
+        <Address value={props.oreVein} />
       </div>
-      <DataState remote={balances}>
-        <Show when={balances.data()}>
+      <DataState remote={props.remote}>
+        <Show when={props.remote.data()}>
           {data => (
             <>
               <div class="console__assets">

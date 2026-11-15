@@ -3,6 +3,8 @@ import { For, Show, onMount, onCleanup, createSignal } from 'solid-js'
 import { Address } from './primitives'
 import { FundView } from './fund-view'
 import { CapitalView } from './capital-view'
+import { request } from '../../../shared/api'
+import type { Operation } from '../api/types'
 import { Icon } from '../../../shared/ui/icon'
 import { errorMessage } from '../model/errors'
 import { ActionDialog } from './action-dialog'
@@ -10,10 +12,13 @@ import { wordmark } from '../../../shared/assets'
 import { SuccessorsView } from './successors-view'
 import { OperationsView } from './operations-view'
 import { dateTime } from '../../../shared/lib/format'
-import { request, ApiError } from '../../../shared/api'
-import { readPending, savePending } from '../model/submission'
-import type { Config, Operation, Readiness } from '../api/types'
-import type { Session, ActionDraft, PendingSubmission } from '../model/types'
+import { createConnection } from '../model/connection'
+import type { ActionDraft, PendingSubmission } from '../model/types'
+import {
+  readPending,
+  savePending,
+  isSubmissionRejected,
+} from '../model/submission'
 
 const navigation = [
   { id: 'fund', icon: 'fund', title: 'Фонд' },
@@ -28,25 +33,20 @@ export function ConsolePage() {
   )
   const [menu, setMenu] = createSignal(false)
   const endpoint = window.location.origin
-  const [session, setSession] = createSignal<Session>()
-  const [ready, setReady] = createSignal(false)
-  const [readOnly, setReadOnly] = createSignal(true)
-  const [revision, setRevision] = createSignal(0)
-  const [checking, setChecking] = createSignal(false)
-  const [checkedAt, setCheckedAt] = createSignal<number>()
-  const [connectionError, setConnectionError] = createSignal('')
-  const [socketStatus, setSocketStatus] = createSignal('Ожидание подключения')
+  const {
+    check,
+    ready,
+    session,
+    readOnly,
+    checking,
+    checkedAt,
+    socketStatus,
+    connectionError,
+  } = createConnection(endpoint)
   const [draft, setDraft] = createSignal<ActionDraft>()
   const [pending, setPending] = createSignal(readPending())
   const [recovering, setRecovering] = createSignal(false)
   const [recoveryError, setRecoveryError] = createSignal('')
-  let generation = 0
-  let readinessGeneration = 0
-  let readinessInFlight: number | undefined
-  let socket: WebSocket | undefined
-  let retry: ReturnType<typeof setTimeout> | undefined
-  let healthTimer: ReturnType<typeof setInterval> | undefined
-  let disposed = false
   const section = () =>
     navigation.some(item => item.id === route().split('/')[0])
       ? route().split('/')[0]
@@ -60,9 +60,6 @@ export function ConsolePage() {
     setRoute(value)
     setMenu(false)
   }
-  function refresh() {
-    setRevision(value => value + 1)
-  }
   function updatePending(value: PendingSubmission | undefined) {
     savePending(value)
     setPending(value)
@@ -70,165 +67,11 @@ export function ConsolePage() {
   function submitted(operation: Operation) {
     setDraft(undefined)
     navigate(`operations/${operation.id}`)
-    refresh()
+    session()?.refresh()
   }
   function openAction(value: ActionDraft) {
     if (ready() && !pending()) {
       setDraft(value)
-    }
-  }
-  function stopSocket() {
-    clearTimeout(retry)
-    if (socket) {
-      socket.onclose = null
-      socket.close()
-      socket = undefined
-    }
-  }
-  function startSocket(current: Session, version: number) {
-    if (disposed || version !== generation) {
-      return
-    }
-    const url = new URL(current.config.websocket, current.endpoint)
-    url.hostname = 'localhost'
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-    const activeSocket = new WebSocket(url)
-    socket = activeSocket
-    socket.onopen = () => {
-      if (version === generation) {
-        setSocketStatus('Обновления в реальном времени')
-      }
-    }
-    socket.onmessage = event => {
-      if (version !== generation) {
-        return
-      }
-      try {
-        const message = JSON.parse(String(event.data))
-        if (
-          message.type === 'operations.snapshot' ||
-          message.type === 'operation.updated'
-        ) {
-          refresh()
-        }
-      } catch {
-        setSocketStatus(
-          'Не удалось прочитать событие; периодическое обновление активно',
-        )
-      }
-    }
-    socket.onerror = () => activeSocket.close()
-    socket.onclose = () => {
-      if (disposed || version !== generation) {
-        return
-      }
-      setSocketStatus('События недоступны · обновление каждые 15 с')
-      retry = setTimeout(() => startSocket(current, version), 5000)
-    }
-  }
-  async function checkReadiness(current: Session, version: number) {
-    if (readinessInFlight === version) {
-      return
-    }
-    readinessInFlight = version
-    const check = ++readinessGeneration
-    try {
-      const result = await request<Readiness>(current.endpoint, '/ready')
-      if (version !== generation || check !== readinessGeneration || disposed) {
-        return
-      }
-      if (result.status !== 'ready' || typeof result.readOnly !== 'boolean') {
-        throw new Error('Сервер не подтвердил готовность.')
-      }
-      setReadOnly(result.readOnly)
-      setReady(true)
-      setConnectionError('')
-      setCheckedAt(Date.now())
-    } catch (cause) {
-      if (
-        version === generation &&
-        check === readinessGeneration &&
-        !disposed
-      ) {
-        setReady(false)
-        setConnectionError(errorMessage(cause))
-      }
-    }
-    if (readinessInFlight === version) {
-      readinessInFlight = undefined
-    }
-    if (version === generation && !disposed) {
-      refresh()
-    }
-  }
-  async function connect() {
-    if (checking()) {
-      return
-    }
-    const base = endpoint
-    const version = ++generation
-    setChecking(true)
-    setReady(false)
-    setConnectionError('')
-    setDraft(undefined)
-    stopSocket()
-    try {
-      const results = await Promise.allSettled([
-        request<{ status: string }>(base, '/health'),
-        request<Readiness>(base, '/ready'),
-        request<Config>(base, '/v1/config'),
-      ])
-      if (version !== generation || disposed) {
-        return
-      }
-      const failure = results.find(result => result.status === 'rejected')
-      if (failure?.status === 'rejected') {
-        throw failure.reason
-      }
-      const [health, readiness, config] = results
-      if (
-        health.status !== 'fulfilled' ||
-        readiness.status !== 'fulfilled' ||
-        config.status !== 'fulfilled'
-      ) {
-        return
-      }
-      if (health.value.status !== 'ok' || readiness.value.status !== 'ready') {
-        throw new Error('Сервер не подтвердил готовность.')
-      }
-      if (
-        config.value.chainId !== 43114 ||
-        typeof config.value.readOnly !== 'boolean' ||
-        typeof readiness.value.readOnly !== 'boolean' ||
-        !Array.isArray(config.value.tokens) ||
-        !config.value.addresses?.oreVein ||
-        config.value.websocket !== '/v1/ws'
-      ) {
-        throw new Error(
-          'Неподдерживаемая конфигурация API. Требуется Avalanche C-Chain (43114).',
-        )
-      }
-      const current: Session = {
-        ready,
-        refresh,
-        readOnly,
-        revision,
-        endpoint: base,
-        config: config.value,
-      }
-      setSession(current)
-      setReadOnly(config.value.readOnly || readiness.value.readOnly)
-      setReady(true)
-      setCheckedAt(Date.now())
-      startSocket(current, version)
-    } catch (cause) {
-      if (!disposed && version === generation) {
-        setConnectionError(errorMessage(cause))
-      }
-    } finally {
-      if (!disposed && version === generation) {
-        setChecking(false)
-      }
     }
   }
   async function recover() {
@@ -253,12 +96,7 @@ export function ConsolePage() {
       updatePending(undefined)
       submitted(operation)
     } catch (cause) {
-      if (
-        cause instanceof ApiError &&
-        cause.detail.code !== 'READ_ONLY' &&
-        cause.status >= 400 &&
-        cause.status < 500
-      ) {
+      if (isSubmissionRejected(cause)) {
         updatePending(undefined)
       }
       setRecoveryError(errorMessage(cause))
@@ -274,25 +112,10 @@ export function ConsolePage() {
     window.addEventListener('hashchange', listener)
     const syncSubmission = () => setPending(readPending())
     window.addEventListener('storage', syncSubmission)
-    void connect()
-    healthTimer = setInterval(() => {
-      const current = session()
-      if (current) {
-        void checkReadiness(current, generation)
-      } else {
-        void connect()
-      }
-    }, 15000)
     onCleanup(() => {
       window.removeEventListener('hashchange', listener)
       window.removeEventListener('storage', syncSubmission)
     })
-  })
-  onCleanup(() => {
-    disposed = true
-    generation++
-    stopSocket()
-    clearInterval(healthTimer)
   })
   return (
     <div class="console">
@@ -383,13 +206,9 @@ export function ConsolePage() {
               {connectionError() || 'Проверяем подключение…'} Новые операции
               заблокированы. Последние данные сохранены на экране.
               <button
+                disabled={checking()}
                 class="console__text-button"
-                onClick={() => {
-                  const current = session()
-                  if (current) {
-                    void checkReadiness(current, generation)
-                  }
-                }}
+                onClick={() => void check()}
               >
                 Проверить связь
               </button>
@@ -436,7 +255,7 @@ export function ConsolePage() {
                 <button
                   disabled={checking()}
                   class="console__button"
-                  onClick={() => void connect()}
+                  onClick={() => void check()}
                 >
                   Повторить
                 </button>

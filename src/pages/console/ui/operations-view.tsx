@@ -4,10 +4,10 @@ import { request } from '../../../shared/api'
 import { createRemote } from '../model/remote'
 import { actions, stepLabels } from '../model/actions'
 import { publicError, errorMessage } from '../model/errors'
-import type { Operation, OperationPage } from '../api/types'
 import { units, dateTime } from '../../../shared/lib/format'
 import { Pager, Status, Address, DataState } from './primitives'
 import type { Session, OperationDetailProps } from '../model/types'
+import type { Operation, OperationPage, Synchronization } from '../api/types'
 import { PlanDetails, RequestDetails, ApprovalDetails } from './plan-details'
 
 function OperationDetail(props: OperationDetailProps) {
@@ -15,14 +15,11 @@ function OperationDetail(props: OperationDetailProps) {
   const [checked, setChecked] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal('')
+  const canResolve = () =>
+    !busy() && checked() && props.session.ready() && !props.session.readOnly()
   async function resolve(event: SubmitEvent) {
     event.preventDefault()
-    if (
-      busy() ||
-      !checked() ||
-      !props.session.ready() ||
-      props.session.readOnly()
-    ) {
+    if (!canResolve()) {
       return
     }
     if (!/^0x[\da-fA-F]{64}$/.test(hash().trim())) {
@@ -37,7 +34,7 @@ function OperationDetail(props: OperationDetailProps) {
         `/v1/operations/${props.operation.id}/resolve`,
         { transactionHash: hash().trim() },
       )
-      props.onRefresh()
+      props.session.refresh()
     } catch (cause) {
       setError(errorMessage(cause))
     } finally {
@@ -167,12 +164,7 @@ function OperationDetail(props: OperationDetailProps) {
           <button
             type="submit"
             class="console__button"
-            disabled={
-              busy() ||
-              !checked() ||
-              !props.session.ready() ||
-              props.session.readOnly()
-            }
+            disabled={!canResolve()}
           >
             {busy() ? 'Проверка…' : 'Принять подтверждённую замену'}
           </button>
@@ -200,6 +192,11 @@ export function OperationsView(props: {
     () => props.session,
     () => (props.selectedId ? `/v1/operations/${props.selectedId}` : undefined),
   )
+  const synchronization = createRemote<Synchronization>(
+    () => props.session,
+    () => '/v1/sync',
+  )
+  const journal = () => synchronization.data()?.journal
   return (
     <>
       <header class="console__page-heading">
@@ -211,6 +208,44 @@ export function OperationsView(props: {
           Обновить
         </button>
       </header>
+      <DataState remote={synchronization}>
+        <Show when={journal()}>
+          {status => (
+            <Show
+              when={
+                !status().historyLoaded ||
+                !status().connected ||
+                status().pending > 0 ||
+                status().blocked
+              }
+            >
+              <div role="alert" class="console__notice">
+                <strong>Синхронизация журнала</strong>
+                <Show when={!status().historyLoaded}>
+                  <p>
+                    Полная история ещё не загружена с публичного сервера.
+                    Показаны доступные операции.
+                  </p>
+                </Show>
+                <Show when={!status().connected}>
+                  <p>Нет связи с журналом на публичном сервере.</p>
+                </Show>
+                <Show when={status().pending > 0}>
+                  <p>
+                    Ожидают сохранения на публичном сервере: {status().pending}.
+                  </p>
+                </Show>
+                <Show when={status().blocked}>
+                  <p>Исполнение остановлено из-за ошибки журнала.</p>
+                </Show>
+                <Show when={status().lastError}>
+                  {error => <p>{publicError(error())}</p>}
+                </Show>
+              </div>
+            </Show>
+          )}
+        </Show>
+      </DataState>
       <Show when={props.selectedId}>
         <button class="console__text-button" onClick={() => props.onSelect('')}>
           ← К списку операций
@@ -221,7 +256,6 @@ export function OperationsView(props: {
               <OperationDetail
                 operation={operation()}
                 session={props.session}
-                onRefresh={() => props.session.refresh()}
               />
             )}
           </Show>
@@ -274,11 +308,18 @@ export function OperationsView(props: {
                   </table>
                   <Show when={!page().operations.length}>
                     <div class="console__empty">
-                      Операций пока нет.
-                      <small>
-                        После подтверждения плана здесь появятся все шаги
-                        исполнения.
-                      </small>
+                      <Show
+                        fallback="В доступной истории операций нет."
+                        when={
+                          journal()?.historyLoaded && !synchronization.error()
+                        }
+                      >
+                        Операций пока нет.
+                        <small>
+                          После подтверждения плана здесь появятся все шаги
+                          исполнения.
+                        </small>
+                      </Show>
                     </div>
                   </Show>
                   <Pager

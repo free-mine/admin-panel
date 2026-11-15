@@ -6,12 +6,16 @@ import { publicError } from '../model/errors'
 import { createRemote } from '../model/remote'
 import type { ViewProps } from '../model/types'
 import { Tabs, Pager, DataState } from './primitives'
-import type { Aave, PositionPage } from '../api/types'
-import { units, fromUnits } from '../../../shared/lib/format'
+import type { Aave, Balances, PositionPage } from '../api/types'
+import { units, decimal, fromUnits } from '../../../shared/lib/format'
 
 export function CapitalView(props: ViewProps) {
   const [tab, setTab] = createSignal('tokens')
   const [offset, setOffset] = createSignal(0)
+  const balances = createRemote<Balances>(
+    () => props.session,
+    () => (['tokens', 'lfj'].includes(tab()) ? '/v1/balances' : undefined),
+  )
   const aave = createRemote<Aave>(
     () => props.session,
     () => (tab() === 'aave' ? '/v1/aave' : undefined),
@@ -43,7 +47,11 @@ export function CapitalView(props: ViewProps) {
         ]}
       />
       <Show when={tab() === 'tokens'}>
-        <BalanceStrip expanded session={props.session} />
+        <BalanceStrip
+          expanded
+          remote={balances}
+          oreVein={props.session.config.addresses.oreVein}
+        />
       </Show>
       <Show when={tab() === 'aave'}>
         <DataState remote={aave}>
@@ -194,7 +202,10 @@ export function CapitalView(props: ViewProps) {
             Подготовить обмен
           </button>
         </section>
-        <BalanceStrip session={props.session} />
+        <BalanceStrip
+          remote={balances}
+          oreVein={props.session.config.addresses.oreVein}
+        />
       </Show>
       <Show when={tab() === 'uniswap'}>
         <div class="console__section-heading">
@@ -232,8 +243,8 @@ export function CapitalView(props: ViewProps) {
                             <>
                               <div class="console__section-heading">
                                 <h2>
-                                  {item().token0.symbol} /{' '}
-                                  {item().token1.symbol}
+                                  {item().tokenA.symbol} /{' '}
+                                  {item().tokenB.symbol}
                                 </h2>
                                 <span class="console__mono">
                                   NFT #{item().tokenId}
@@ -242,29 +253,61 @@ export function CapitalView(props: ViewProps) {
                               <dl class="console__details">
                                 <dt>Комиссия пула</dt>
                                 <dd>{units(String(item().fee), 4)}%</dd>
-                                <dt>Диапазон тиков</dt>
+                                <dt>Текущая цена</dt>
                                 <dd>
-                                  {item().tickLower} → {item().tickUpper}
+                                  {decimal(item().currentPrice)}{' '}
+                                  {item().tokenB.symbol} за 1{' '}
+                                  {item().tokenA.symbol}
+                                </dd>
+                                <dt>Нижняя граница цены</dt>
+                                <dd>
+                                  {decimal(item().range.lowerPrice)}{' '}
+                                  {item().tokenB.symbol} за 1{' '}
+                                  {item().tokenA.symbol}
+                                </dd>
+                                <dt>Верхняя граница цены</dt>
+                                <dd>
+                                  {decimal(item().range.upperPrice)}{' '}
+                                  {item().tokenB.symbol} за 1{' '}
+                                  {item().tokenA.symbol}
+                                </dd>
+                                <dt>Расстояние до нижней границы</dt>
+                                <dd>
+                                  {item().range.lowerDistancePercent === null
+                                    ? '—'
+                                    : `${decimal(item().range.lowerDistancePercent ?? '0')}%`}
+                                </dd>
+                                <dt>Расстояние до верхней границы</dt>
+                                <dd>
+                                  {item().range.upperDistancePercent === null
+                                    ? '—'
+                                    : `${decimal(item().range.upperDistancePercent ?? '0')}%`}
+                                </dd>
+                                <dt>Положение цены</dt>
+                                <dd>
+                                  {item().inRange
+                                    ? 'В диапазоне'
+                                    : 'Вне диапазона или на границе'}
                                 </dd>
                                 <dt>Ликвидность (единицы протокола)</dt>
                                 <dd class="console__mono">
                                   {item().liquidity}
                                 </dd>
-                                <dt>Начислено {item().token0.symbol}</dt>
+                                <dt>Начислено {item().tokenA.symbol}</dt>
                                 <dd>
                                   <Amount
                                     value={fromUnits(
-                                      item().tokensOwed0,
-                                      item().token0.decimals,
+                                      item().tokensOwedA,
+                                      item().tokenA.decimals,
                                     )}
                                   />
                                 </dd>
-                                <dt>Начислено {item().token1.symbol}</dt>
+                                <dt>Начислено {item().tokenB.symbol}</dt>
                                 <dd>
                                   <Amount
                                     value={fromUnits(
-                                      item().tokensOwed1,
-                                      item().token1.decimals,
+                                      item().tokensOwedB,
+                                      item().tokenB.decimals,
                                     )}
                                   />
                                 </dd>
@@ -286,8 +329,8 @@ export function CapitalView(props: ViewProps) {
                                       onClick={() =>
                                         props.onAction({
                                           kind: `uniswap.${kind}`,
-                                          token0: item().token0.symbol,
-                                          token1: item().token1.symbol,
+                                          token0: item().tokenA.symbol,
+                                          token1: item().tokenB.symbol,
                                           values: { tokenId: item().tokenId },
                                         })
                                       }
@@ -297,8 +340,8 @@ export function CapitalView(props: ViewProps) {
                                         (kind === 'burn' &&
                                           [
                                             item().liquidity,
-                                            item().tokensOwed0,
-                                            item().tokensOwed1,
+                                            item().tokensOwedA,
+                                            item().tokensOwedB,
                                           ].some(value => BigInt(value) > 0n))
                                       }
                                     >

@@ -28,6 +28,7 @@ export function createRemote<T>(
     if (url !== lastPath) {
       setData(undefined)
       setUpdated(undefined)
+      setError('')
       lastPath = url
     }
     if (!url) {

@@ -35,7 +35,6 @@ export interface PendingSubmission {
 export interface OperationDetailProps {
   session: Session
   operation: Operation
-  onRefresh: () => void
 }
 export interface Field {
   key: string
@@ -46,7 +45,7 @@ export interface Field {
   default?: string
   optional?: boolean
   options?: { value: string; label: string }[]
-  kind?:
+  kind:
     | 'token'
     | 'decimal'
     | 'integer'

@@ -23,19 +23,23 @@ export function FundView(props: ViewProps) {
     () => props.session,
     () => '/v1/balances',
   )
-  const lastId = () =>
-    fund.data() && BigInt(fund.data()?.currentShiftId ?? '1') > 1n
-      ? String(BigInt(fund.data()?.currentShiftId ?? '1') - 1n)
-      : undefined
+  const lastId = () => {
+    const current = BigInt(fund.data()?.currentShiftId ?? '1')
+    return current > 1n ? String(current - 1n) : undefined
+  }
   const last = createRemote<Shift>(
     () => props.session,
     () => (lastId() ? `/v1/fund/shifts/${lastId()}` : undefined),
   )
   const selectedId = () => selected() || lastId() || fund.data()?.currentShiftId
-  const shift = createRemote<Shift>(
+  const selectedShift = createRemote<Shift>(
     () => props.session,
-    () => (selectedId() ? `/v1/fund/shifts/${selectedId()}` : undefined),
+    () =>
+      selectedId() && selectedId() !== lastId()
+        ? `/v1/fund/shifts/${selectedId()}`
+        : undefined,
   )
+  const shift = () => (selectedId() === lastId() ? last : selectedShift)
   const claims = createRemote<ClaimPage>(
     () => props.session,
     () =>
@@ -203,8 +207,8 @@ export function FundView(props: ViewProps) {
                       {inputError()}
                     </p>
                   </Show>
-                  <DataState remote={shift}>
-                    <Show when={shift.data()}>
+                  <DataState remote={shift()}>
+                    <Show when={shift().data()}>
                       {value => (
                         <p class="console__subtle">
                           Смена #{value().id} ·{' '}
@@ -246,10 +250,10 @@ export function FundView(props: ViewProps) {
                                     </td>
                                     <td data-label="Состояние">
                                       <Show
-                                        when={shift.data()?.funded}
+                                        when={shift().data()?.funded}
                                         fallback={
                                           <span class="console__subtle">
-                                            {shift.data()
+                                            {shift().data()
                                               ? 'Ждёт финансирования'
                                               : 'Нет данных о смене'}
                                           </span>
@@ -260,8 +264,8 @@ export function FundView(props: ViewProps) {
                                             <span>Доступна к получению</span>
                                           }
                                           when={
-                                            (shift.data()?.expireAvailableAt ??
-                                              Infinity) *
+                                            (shift().data()
+                                              ?.expireAvailableAt ?? Infinity) *
                                               1000 <=
                                             Date.now()
                                           }
@@ -270,7 +274,7 @@ export function FundView(props: ViewProps) {
                                             class="console__text-button"
                                             disabled={
                                               disabled() ||
-                                              !!shift.error() ||
+                                              !!shift().error() ||
                                               !!claims.error()
                                             }
                                             onClick={() =>
@@ -326,7 +330,10 @@ export function FundView(props: ViewProps) {
                     Закрыть смену #{data().currentShiftId}
                   </button>
                 </div>
-                <BalanceStrip session={props.session} />
+                <BalanceStrip
+                  remote={balances}
+                  oreVein={props.session.config.addresses.oreVein}
+                />
               </Show>
               <Show when={tab() === 'price'}>
                 <div class="console__grid">

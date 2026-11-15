@@ -35,12 +35,14 @@ export function units(value: string, decimals = 18) {
   return decimal(fromUnits(value, decimals))
 }
 
+const dateTimeFormatter = new Intl.DateTimeFormat('ru-RU', {
+  timeStyle: 'short',
+  dateStyle: 'medium',
+  timeZone: 'Europe/Moscow',
+})
+
 export function dateTime(milliseconds: number) {
-  return `${new Intl.DateTimeFormat('ru-RU', {
-    timeStyle: 'short',
-    dateStyle: 'medium',
-    timeZone: 'Europe/Moscow',
-  }).format(milliseconds)} МСК`
+  return `${dateTimeFormatter.format(milliseconds)} МСК`
 }
 
 export function shortAddress(value: string) {

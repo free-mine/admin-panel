@@ -1,11 +1,13 @@
 import type { Page, WebSocketRoute } from '@playwright/test'
 
 import type { MockState } from './fixture.types'
+import { toUnits } from '../src/shared/lib/format'
 import type {
   Fund,
   Config,
   Preview,
   Operation,
+  PositionPage,
   PreviewRequest,
 } from '../src/pages/console/api/types'
 
@@ -111,6 +113,24 @@ export async function mockApi(page: Page): Promise<MockState> {
     if (path === '/v1/config') {
       return respond({ ...config, readOnly: state.readOnly })
     }
+    if (path === '/v1/sync') {
+      return respond({
+        journal: {
+          pending: 0,
+          blocked: false,
+          connected: true,
+          historyLoaded: true,
+        },
+        state: {
+          available: true,
+          lastError: null,
+          snapshotBlock: 100,
+          requiredBlock: null,
+          refreshPending: false,
+          lastCheckedAt: Date.now(),
+        },
+      })
+    }
     if (path === '/v1/fund') {
       return respond(fund)
     }
@@ -205,25 +225,32 @@ export async function mockApi(page: Page): Promise<MockState> {
       })
     }
     if (path === '/v1/uniswap/positions') {
-      return respond({
+      const positions: PositionPage = {
         offset: 0,
         limit: 20,
         total: '2',
         positions: [
           {
             fee: 3000,
+            inRange: true,
             tokenId: '123',
-            tickUpper: 887220,
-            tickLower: -887220,
+            currentPrice: '0.04',
             liquidity: '1000000',
-            tokensOwed0: '2500000',
-            token0: config.tokens[0],
-            token1: config.tokens[1],
-            tokensOwed1: '1000000000000000',
+            tokensOwedA: '2500000',
+            tokenA: config.tokens[0],
+            tokenB: config.tokens[1],
+            tokensOwedB: '1000000000000000',
+            range: {
+              lowerPrice: '0.036',
+              upperPrice: '0.0448',
+              lowerDistancePercent: '10',
+              upperDistancePercent: '12',
+            },
           },
           { tokenId: '124', error: { code: 'UNSUPPORTED_TOKEN' } },
         ],
-      })
+      }
+      return respond(positions)
     }
     if (path === '/v1/successors') {
       return respond({
@@ -275,7 +302,9 @@ export async function mockApi(page: Page): Promise<MockState> {
                   minimumOut: '99500000000000000',
                   route: [address(11), address(12)],
                 }
-              : { recipient: address(2), ...input.action.params },
+              : input.action.kind === 'uniswap.mint'
+                ? mintSummary(input)
+                : { recipient: address(2), ...input.action.params },
       }
       state.plans.set(id, preview)
       return respond(preview, 201)
@@ -361,4 +390,51 @@ export async function mockApi(page: Page): Promise<MockState> {
     return respond({ error: { code: 'UNHANDLED_TEST_ROUTE' } }, 500)
   })
   return state
+}
+
+function mintSummary(input: PreviewRequest) {
+  const params = input.action.params
+  const tokenA = config.tokens.find(token => token.symbol === params.tokenA)
+  const tokenB = config.tokens.find(token => token.symbol === params.tokenB)
+  if (!tokenA || !tokenB) {
+    throw new Error('Unsupported mint fixture tokens')
+  }
+  const budgetA = toUnits(String(params.amountA), tokenA.decimals)
+  const budgetB = toUnits(String(params.amountB), tokenB.decimals)
+  const expectedA = (budgetA * 995n) / 1000n
+  const expectedB = (budgetB * 995n) / 1000n
+  return {
+    inRange: true,
+    fee: params.fee,
+    initialize: false,
+    currentPrice: '25',
+    deadline: 2000000000,
+    tokenA: tokenA.symbol,
+    tokenB: tokenB.symbol,
+    recipient: address(2),
+    decimalsA: tokenA.decimals,
+    decimalsB: tokenB.decimals,
+    minimumUtilizationPercent: '99',
+    minBoundaryPercent: params.minBoundaryPercent,
+    range: {
+      upperPrice: '28',
+      lowerPrice: '22.5',
+      lowerDistancePercent: '10',
+      upperDistancePercent: '12',
+    },
+    amounts: {
+      budgetA: budgetA.toString(),
+      budgetB: budgetB.toString(),
+      utilizationPercentA: '99.5',
+      utilizationPercentB: '99.5',
+      desiredA: budgetA.toString(),
+      desiredB: budgetB.toString(),
+      expectedA: expectedA.toString(),
+      expectedB: expectedB.toString(),
+      leftoverA: (budgetA - expectedA).toString(),
+      leftoverB: (budgetB - expectedB).toString(),
+      minimumA: ((budgetA * 99n) / 100n).toString(),
+      minimumB: ((budgetB * 99n) / 100n).toString(),
+    },
+  }
 }

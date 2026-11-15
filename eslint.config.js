@@ -3,8 +3,8 @@ import globals from 'globals'
 import ts from 'typescript-eslint'
 import solid from 'eslint-plugin-solid'
 import { importX } from 'eslint-plugin-import-x'
+import prettier from 'eslint-config-prettier/flat'
 import perfectionist from 'eslint-plugin-perfectionist'
-import prettier from 'eslint-plugin-prettier/recommended'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig(

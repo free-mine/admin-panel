@@ -38,6 +38,7 @@ test('all 18 API actions have forms; numeric API fields and ID strings keep thei
       price: '1.20',
       shiftId: '42',
       uri: 'ipfs://metadata',
+      minBoundaryPercent: '10',
       tokenId: '9007199254740993',
       timestamp: '2090-01-01T12:00',
       address: '0x0000000000000000000000000000000000000001',
@@ -52,6 +53,9 @@ test('all 18 API actions have forms; numeric API fields and ID strings keep thei
     }
     if (kind === 'uniswap.mint') {
       expect(result.action.params).not.toHaveProperty('tickLower')
+      expect(result.action.params).not.toHaveProperty('tickUpper')
+      expect(result.action.params).not.toHaveProperty('range')
+      expect(result.action.params.minBoundaryPercent).toBe('10')
       expect(result.action.params.fee).toBe(3000)
     }
     if (kind === 'successor.schedule') {
