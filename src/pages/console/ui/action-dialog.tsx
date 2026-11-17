@@ -1,7 +1,6 @@
 import { For, Show, onMount, untrack, onCleanup, createSignal } from 'solid-js'
 
 import { DataState } from './primitives'
-import { request } from '../../../shared/api'
 import { Icon } from '../../../shared/ui/icon'
 import { errorMessage } from '../model/errors'
 import { createRemote } from '../model/remote'
@@ -125,11 +124,10 @@ export function ActionDialog(props: {
     setAccepted(false)
     setPreview(undefined)
     try {
-      const result = await request<Preview>(
-        props.session.endpoint,
-        '/v1/previews',
-        { maxGasAvax: gas(), action: validated.action },
-      )
+      const result = await props.session.request<Preview>('/v1/previews', {
+        maxGasAvax: gas(),
+        action: validated.action,
+      })
       if (alive) {
         setPreview(result)
         setNow(Date.now())
@@ -161,8 +159,7 @@ export function ActionDialog(props: {
       // Persist before the request; retries, including after reload, use this exact pair.
       props.onPending(pending)
       setUncertain(pending)
-      const operation = await request<Operation>(
-        props.session.endpoint,
+      const operation = await props.session.request<Operation>(
         '/v1/operations',
         { previewId: pending.previewId, requestId: pending.requestId },
       )

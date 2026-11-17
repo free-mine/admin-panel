@@ -1,13 +1,12 @@
 import { For, Show, createSignal } from 'solid-js'
 
-import { request } from '../../../shared/api'
 import { createRemote } from '../model/remote'
 import { actions, stepLabels } from '../model/actions'
 import { publicError, errorMessage } from '../model/errors'
 import { units, dateTime } from '../../../shared/lib/format'
 import { Pager, Status, Address, DataState } from './primitives'
 import type { Session, OperationDetailProps } from '../model/types'
-import type { Operation, OperationPage, Synchronization } from '../api/types'
+import type { Operation, OperationPage, JournalStatus } from '../api/types'
 import { PlanDetails, RequestDetails, ApprovalDetails } from './plan-details'
 
 function OperationDetail(props: OperationDetailProps) {
@@ -29,8 +28,7 @@ function OperationDetail(props: OperationDetailProps) {
     setBusy(true)
     setError('')
     try {
-      await request(
-        props.session.endpoint,
+      await props.session.request(
         `/v1/operations/${props.operation.id}/resolve`,
         { transactionHash: hash().trim() },
       )
@@ -192,11 +190,10 @@ export function OperationsView(props: {
     () => props.session,
     () => (props.selectedId ? `/v1/operations/${props.selectedId}` : undefined),
   )
-  const synchronization = createRemote<Synchronization>(
+  const journal = createRemote<JournalStatus>(
     () => props.session,
-    () => '/v1/sync',
+    () => '/v1/journal',
   )
-  const journal = () => synchronization.data()?.journal
   return (
     <>
       <header class="console__page-heading">
@@ -208,36 +205,13 @@ export function OperationsView(props: {
           Обновить
         </button>
       </header>
-      <DataState remote={synchronization}>
-        <Show when={journal()}>
+      <DataState remote={journal}>
+        <Show when={journal.data()}>
           {status => (
-            <Show
-              when={
-                !status().historyLoaded ||
-                !status().connected ||
-                status().pending > 0 ||
-                status().blocked
-              }
-            >
+            <Show when={status().blocked}>
               <div role="alert" class="console__notice">
-                <strong>Синхронизация журнала</strong>
-                <Show when={!status().historyLoaded}>
-                  <p>
-                    Полная история ещё не загружена с публичного сервера.
-                    Показаны доступные операции.
-                  </p>
-                </Show>
-                <Show when={!status().connected}>
-                  <p>Нет связи с журналом на публичном сервере.</p>
-                </Show>
-                <Show when={status().pending > 0}>
-                  <p>
-                    Ожидают сохранения на публичном сервере: {status().pending}.
-                  </p>
-                </Show>
-                <Show when={status().blocked}>
-                  <p>Исполнение остановлено из-за ошибки журнала.</p>
-                </Show>
+                <strong>Локальный журнал</strong>
+                <p>Исполнение остановлено из-за ошибки журнала.</p>
                 <Show when={status().lastError}>
                   {error => <p>{publicError(error())}</p>}
                 </Show>
@@ -308,18 +282,11 @@ export function OperationsView(props: {
                   </table>
                   <Show when={!page().operations.length}>
                     <div class="console__empty">
-                      <Show
-                        fallback="В доступной истории операций нет."
-                        when={
-                          journal()?.historyLoaded && !synchronization.error()
-                        }
-                      >
-                        Операций пока нет.
-                        <small>
-                          После подтверждения плана здесь появятся все шаги
-                          исполнения.
-                        </small>
-                      </Show>
+                      Операций пока нет.
+                      <small>
+                        После подтверждения плана здесь появятся все шаги
+                        исполнения.
+                      </small>
                     </div>
                   </Show>
                   <Pager

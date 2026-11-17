@@ -1,11 +1,14 @@
 import { onMount, onCleanup, createSignal } from 'solid-js'
 
-import type { Session } from './types'
 import { errorMessage } from './errors'
-import { request } from '../../../shared/api'
 import type { Config, Readiness } from '../api/types'
+import type { Session, ConsoleRequest } from './types'
 
-export function createConnection(endpoint: string) {
+export function createConnection(
+  endpoint: string,
+  request: ConsoleRequest,
+  onAuthRequired: () => void,
+) {
   const [session, setSession] = createSignal<Session>()
   const [ready, setReady] = createSignal(false)
   const [readOnly, setReadOnly] = createSignal(true)
@@ -24,7 +27,6 @@ export function createConnection(endpoint: string) {
 
   function startSocket(config: Config) {
     const url = new URL(config.websocket, endpoint)
-    url.hostname = 'localhost'
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     const activeSocket = new WebSocket(url)
     socket = activeSocket
@@ -47,7 +49,11 @@ export function createConnection(endpoint: string) {
       }
     }
     activeSocket.onerror = () => activeSocket.close()
-    activeSocket.onclose = () => {
+    activeSocket.onclose = event => {
+      if (event.code === 1008 && event.reason === 'AUTH_REQUIRED') {
+        onAuthRequired()
+        return
+      }
       setSocketStatus('События недоступны · обновление каждые 15 с')
       retry = setTimeout(() => startSocket(config), 5000)
     }
@@ -60,7 +66,7 @@ export function createConnection(endpoint: string) {
     const current = session()
     setChecking(true)
     try {
-      const readiness = await request<Readiness>(endpoint, '/ready')
+      const readiness = await request<Readiness>('/ready')
       if (disposed) {
         return
       }
@@ -71,7 +77,7 @@ export function createConnection(endpoint: string) {
         throw new Error('Сервер не подтвердил готовность.')
       }
       if (!current) {
-        const config = await request<Config>(endpoint, '/v1/config')
+        const config = await request<Config>('/v1/config')
         if (disposed) {
           return
         }
@@ -86,7 +92,15 @@ export function createConnection(endpoint: string) {
             'Неподдерживаемая конфигурация API. Требуется Avalanche C-Chain (43114).',
           )
         }
-        setSession({ ready, config, refresh, endpoint, readOnly, revision })
+        setSession({
+          ready,
+          config,
+          refresh,
+          request,
+          endpoint,
+          readOnly,
+          revision,
+        })
         setReadOnly(readiness.readOnly || config.readOnly)
         startSocket(config)
       } else {

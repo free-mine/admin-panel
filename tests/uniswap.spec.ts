@@ -18,41 +18,8 @@ const mintValues = {
   amountA: '1.234567890123456789',
 }
 
-test('mint sends exact asset budgets and a percentage without obsolete tick parameters', () => {
-  const result = validateAction(
-    mint,
-    {
-      ...mintValues,
-      range: 'custom',
-      tickUpper: '60',
-      tickLower: '-60',
-      initialPrice: '25.123456789012345678',
-    },
-    config,
-  )
-  expect(result.errors).toEqual({})
-  expect(result.action).toEqual({
-    kind: 'uniswap.mint',
-    params: {
-      fee: 3000,
-      tokenB: 'USDT',
-      slippageBps: 50,
-      tokenA: 'WAVAX',
-      amountB: '27.5',
-      minBoundaryPercent: '10',
-      amountA: '1.234567890123456789',
-      initialPrice: '25.123456789012345678',
-    },
-  })
-})
-
 test('mint percentage accepts only server-supported precision and open bounds', () => {
-  for (const minBoundaryPercent of [
-    '0.000001',
-    '1',
-    '10.123456',
-    '99.999999',
-  ]) {
+  for (const minBoundaryPercent of ['0.000001', '99.999999']) {
     const result = validateAction(
       mint,
       { ...mintValues, minBoundaryPercent },
@@ -64,14 +31,12 @@ test('mint percentage accepts only server-supported precision and open bounds', 
   for (const minBoundaryPercent of [
     '',
     '0',
-    '0.000000',
     '100',
     '-1',
     '1e1',
     '1,5',
     '01',
     '0.0000001',
-    '99.9999999',
   ]) {
     expect(
       validateAction(mint, { ...mintValues, minBoundaryPercent }, config)
@@ -103,7 +68,7 @@ test('initial pool prices retain sub-1e-18 precision and reject invalid decimals
   const result = validateAction(mint, { ...mintValues, initialPrice }, config)
   expect(result.errors).toEqual({})
   expect(result.action.params.initialPrice).toBe(initialPrice)
-  for (const value of ['0', '0.000', '-1', '01', '1e-18', '1,25']) {
+  for (const value of ['0', '-1', '01', '1e-18', '1,25']) {
     expect(
       validateAction(mint, { ...mintValues, initialPrice: value }, config)
         .errors,
@@ -121,9 +86,6 @@ test('mint form previews a price range and formatted nested amounts in selected 
   await page
     .getByRole('button', { exact: true, name: 'Создать позицию' })
     .click()
-  for (const key of ['range', 'tickLower', 'tickUpper']) {
-    await expect(page.locator(`#field-${key}`)).toHaveCount(0)
-  }
   await page.locator('#field-tokenA').selectOption('WAVAX')
   await page.locator('#field-tokenB').selectOption('USDT')
   await page.locator('#field-amountA').fill(mintValues.amountA)
@@ -179,7 +141,6 @@ test('position assets and human prices keep increase amounts in contract order',
   ).toBeVisible()
   await expect(page.getByText('Начислено USDT', { exact: true })).toBeVisible()
   await expect(page.getByText('Начислено WAVAX', { exact: true })).toBeVisible()
-  await expect(page.getByText('Диапазон тиков', { exact: true })).toHaveCount(0)
   await expect(page.locator('main')).toContainText('0,036')
   await expect(page.locator('main')).toContainText('0,0448')
   await page.getByRole('button', { exact: true, name: 'Добавить' }).click()

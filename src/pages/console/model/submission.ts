@@ -6,9 +6,14 @@ const key = 'free-mine.pending-operation'
 export function isSubmissionRejected(cause: unknown) {
   return (
     cause instanceof ApiError &&
-    cause.detail.code !== 'READ_ONLY' &&
-    cause.status >= 400 &&
-    cause.status < 500
+    [
+      'PREVIEW_NOT_FOUND',
+      'PREVIEW_EXPIRED',
+      'PREVIEW_ALREADY_SUBMITTED',
+      'IDEMPOTENCY_CONFLICT',
+      'PLAN_CHANGED',
+      'QUEUE_FULL',
+    ].includes(cause.detail.code)
   )
 }
 

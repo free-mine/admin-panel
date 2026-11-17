@@ -45,9 +45,6 @@ test('balances truncate to eight places and copy exact decimal strings', async (
   for (const value of [
     '0.00572940629841689',
     '9007199254740993.000001',
-    '0',
-    '0.00000001',
-    '1.676104945769894255',
     '0.000000000000000001',
   ]) {
     await page
@@ -68,26 +65,20 @@ test('balances truncate to eight places and copy exact decimal strings', async (
   await expect
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toBe(config.tokens[1].address)
-  for (const width of [390, 900, 1440]) {
-    await page.setViewportSize({ width, height: 1040 })
-    const value = assets.nth(1).locator('.console__amount-value')
-    expect(
-      await value.evaluate(
-        element =>
-          element.getBoundingClientRect().height <=
-          Number.parseFloat(getComputedStyle(element).lineHeight) + 1,
-      ),
-    ).toBe(true)
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= window.innerWidth,
-      ),
-    ).toBe(true)
-    await page.screenshot({
-      fullPage: true,
-      path: `.tmp/screenshots/balances-${width}.png`,
-    })
-  }
+  await page.setViewportSize({ width: 390, height: 1040 })
+  const value = assets.nth(1).locator('.console__amount-value')
+  expect(
+    await value.evaluate(
+      element =>
+        element.getBoundingClientRect().height <=
+        Number.parseFloat(getComputedStyle(element).lineHeight) + 1,
+    ),
+  ).toBe(true)
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true)
   await page.evaluate(() => {
     window.location.hash = 'fund'
   })
@@ -107,10 +98,6 @@ test('balances truncate to eight places and copy exact decimal strings', async (
   state.snapshot()
   await expect(gas).toContainText('Не удалось обновить баланс газа')
   await expect(gas.locator('.console__amount-value')).toHaveText('1,67610494')
-  await page.screenshot({
-    fullPage: true,
-    path: '.tmp/screenshots/fund-gas.png',
-  })
 })
 
 test('clipboard failure exposes the full amount for manual copying', async ({

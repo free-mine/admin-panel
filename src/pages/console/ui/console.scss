@@ -1,6 +1,29 @@
 .console {
   min-height: 100svh;
 
+  &__login {
+    display: grid;
+    padding: 24px;
+    place-items: center;
+  }
+
+  &__login-card {
+    width: min(100%, 420px);
+    padding: 32px;
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    background: var(--color-surface);
+  }
+
+  &__login-card > img {
+    display: block;
+    margin-bottom: 24px;
+  }
+
+  &__login-card .console__button {
+    width: 100%;
+  }
+
   h1,
   h2,
   h3,

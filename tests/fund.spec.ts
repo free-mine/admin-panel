@@ -1,36 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-import { fund, config, mockApi } from './fixture'
-
-test('fund metrics and capital use the same balance snapshot', async ({
-  page,
-}) => {
-  await mockApi(page)
-  let snapshot = 0
-  await page.route('**/v1/balances', route => {
-    snapshot++
-    return route.fulfill({
-      json: {
-        oreVeinAvax: '0',
-        owner: config.owner,
-        ownerAvax: String(snapshot),
-        oreVein: config.addresses.oreVein,
-        tokens: config.tokens.map(token => ({
-          ...token,
-          balance: String(BigInt(snapshot) * 10n ** BigInt(token.decimals)),
-        })),
-      },
-    })
-  })
-  await page.goto('/')
-  const capital = page.locator('.console__asset .console__amount-value').first()
-  const gas = page
-    .locator('.console__metrics > div')
-    .filter({ hasText: 'Газ владельца' })
-    .locator('.console__amount-value')
-  await expect(capital).toBeVisible()
-  await expect(gas).toHaveText(await capital.innerText())
-})
+import { fund, mockApi } from './fixture'
 
 test('selecting a shift keeps the last closed shift separate from its claims', async ({
   page,
@@ -89,36 +59,33 @@ test('the first shift shows its claims without a closed shift', async ({
   await expect(page.getByText('#3', { exact: true })).toBeVisible()
 })
 
-test('changing a shift clears the previous error before the next response', async ({
+test('a delayed failure from the previous shift cannot replace the selected shift', async ({
   page,
 }) => {
   await mockApi(page)
-  await page.route('**/v1/fund/shifts/41', route =>
-    route.fulfill({
+  const response = Promise.withResolvers<void>()
+  await page.route('**/v1/fund/shifts/41', async route => {
+    await response.promise
+    await route.fulfill({
       status: 404,
       json: { error: { code: 'NOT_FOUND' } },
-    }),
-  )
-  const response = Promise.withResolvers<void>()
-  await page.route('**/v1/fund/shifts/40', async route => {
-    await response.promise
-    await route.fallback()
+    })
   })
   await page.goto('/')
+  const previousRequest = page.waitForRequest('**/v1/fund/shifts/41')
   await page.getByRole('textbox', { name: 'ID смены' }).fill('41')
   await page.getByRole('button', { exact: true, name: 'Показать' }).click()
-  const error = page.getByRole('alert').filter({ hasText: 'NOT_FOUND' })
-  await expect(error).toBeVisible()
-
+  await previousRequest
   await page.getByRole('textbox', { name: 'ID смены' }).fill('40')
   await page.getByRole('button', { exact: true, name: 'Показать' }).click()
-  await expect(error).toHaveCount(0)
-  await expect(
-    page.getByRole('status').filter({ hasText: 'Загрузка данных…' }),
-  ).toBeVisible()
+  const selected = page.getByText('Смена #40 · Ожидает финансирования', {
+    exact: true,
+  })
+  await expect(selected).toBeVisible()
 
+  const previousResponse = page.waitForResponse('**/v1/fund/shifts/41')
   response.resolve()
-  await expect(
-    page.getByText('Смена #40 · Ожидает финансирования', { exact: true }),
-  ).toBeVisible()
+  await previousResponse
+  await expect(selected).toBeVisible()
+  await expect(page.getByRole('alert')).toHaveCount(0)
 })

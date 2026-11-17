@@ -27,22 +27,9 @@ export interface Readiness {
   status: string
   readOnly: boolean
 }
-export interface Synchronization {
-  journal: {
-    pending: number
-    blocked: boolean
-    connected: boolean
-    historyLoaded: boolean
-    lastError?: PublicError
-  }
-  state: {
-    available: boolean
-    refreshPending: boolean
-    snapshotBlock: number | null
-    requiredBlock: number | null
-    lastCheckedAt: number | null
-    lastError: PublicError | null
-  }
+export interface JournalStatus {
+  blocked: boolean
+  lastError?: PublicError
 }
 export interface Balances {
   owner: string
