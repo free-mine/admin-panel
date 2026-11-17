@@ -1,5 +1,9 @@
 import type { Balances } from '../api/types'
-import type { RemoteData } from '../model/types'
+import type { RemoteData, Authentication } from '../model/types'
+
+export interface AuthenticationProps {
+  authentication: Authentication
+}
 
 export interface BalanceStripProps {
   oreVein: string

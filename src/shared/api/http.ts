@@ -18,7 +18,7 @@ export async function request<T>(
   try {
     response = await fetch(`${base}${path}`, {
       cache: 'no-store',
-      credentials: 'omit',
+      credentials: 'same-origin',
       signal: AbortSignal.timeout(30000),
       method: body === undefined ? 'GET' : 'POST',
       body: body === undefined ? undefined : JSON.stringify(body),

@@ -1,9 +1,9 @@
-import { For, Show, onMount, onCleanup, createSignal } from 'solid-js'
+import { For, Show, onMount, untrack, onCleanup, createSignal } from 'solid-js'
 
+import { Login } from './login'
 import { Address } from './primitives'
 import { FundView } from './fund-view'
 import { CapitalView } from './capital-view'
-import { request } from '../../../shared/api'
 import type { Operation } from '../api/types'
 import { Icon } from '../../../shared/ui/icon'
 import { errorMessage } from '../model/errors'
@@ -11,8 +11,10 @@ import { ActionDialog } from './action-dialog'
 import { wordmark } from '../../../shared/assets'
 import { SuccessorsView } from './successors-view'
 import { OperationsView } from './operations-view'
+import type { AuthenticationProps } from './types'
 import { dateTime } from '../../../shared/lib/format'
 import { createConnection } from '../model/connection'
+import { createAuthentication } from '../model/authentication'
 import type { ActionDraft, PendingSubmission } from '../model/types'
 import {
   readPending,
@@ -28,6 +30,18 @@ const navigation = [
 ]
 
 export function ConsolePage() {
+  const authentication = createAuthentication(window.location.origin)
+  return (
+    <Show
+      when={authentication.authenticated()}
+      fallback={<Login authentication={authentication} />}
+    >
+      <ConsoleWorkspace authentication={authentication} />
+    </Show>
+  )
+}
+
+function ConsoleWorkspace(props: AuthenticationProps) {
   const [route, setRoute] = createSignal(
     window.location.hash.slice(1) || 'fund',
   )
@@ -42,7 +56,11 @@ export function ConsolePage() {
     checkedAt,
     socketStatus,
     connectionError,
-  } = createConnection(endpoint)
+  } = createConnection(
+    endpoint,
+    untrack(() => props.authentication.request),
+    () => props.authentication.expire(),
+  )
   const [draft, setDraft] = createSignal<ActionDraft>()
   const [pending, setPending] = createSignal(readPending())
   const [recovering, setRecovering] = createSignal(false)
@@ -88,8 +106,7 @@ export function ConsolePage() {
     setRecovering(true)
     setRecoveryError('')
     try {
-      const operation = await request<Operation>(
-        submission.endpoint,
+      const operation = await props.authentication.request<Operation>(
         '/v1/operations',
         { previewId: submission.previewId, requestId: submission.requestId },
       )
@@ -180,6 +197,13 @@ export function ConsolePage() {
             Рабочее пространство <span>/</span> <b>OreVein</b>
           </div>
           <div class="console__row">
+            <button
+              class="console__text-button"
+              disabled={props.authentication.busy()}
+              onClick={() => void props.authentication.logout()}
+            >
+              Выйти
+            </button>
             <span class="console__network">Avalanche C-Chain</span>
             <Show when={session()}>
               {current => <Address value={current().config.owner} />}
@@ -192,6 +216,11 @@ export function ConsolePage() {
           </div>
         </header>
         <main tabIndex={-1} id="main-content" class="console__main">
+          <Show when={props.authentication.error()}>
+            <div role="alert" class="console__notice console__notice--danger">
+              {props.authentication.error()}
+            </div>
+          </Show>
           <Show when={session() && readOnly()}>
             <div role="status" class="console__notice">
               <b>Режим только чтения</b>

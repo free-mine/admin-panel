@@ -13,9 +13,22 @@ export interface Session {
   config: Config
   endpoint: string
   refresh: () => void
+  request: ConsoleRequest
   ready: Accessor<boolean>
   revision: Accessor<number>
   readOnly: Accessor<boolean>
+}
+export type ConsoleRequest = <T>(path: string, body?: unknown) => Promise<T>
+
+export interface Authentication {
+  expire: () => void
+  busy: Accessor<boolean>
+  error: Accessor<string>
+  request: ConsoleRequest
+  check: () => Promise<void>
+  logout: () => Promise<void>
+  login: (pin: string) => Promise<void>
+  authenticated: Accessor<boolean | undefined>
 }
 export interface ActionDraft {
   token0?: string

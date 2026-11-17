@@ -57,6 +57,7 @@ export async function mockApi(page: Page): Promise<MockState> {
     ready: true,
     ttl: 120000,
     previews: [],
+    loginPins: [],
     operations: [],
     connections: 0,
     socketUrls: [],
@@ -65,11 +66,11 @@ export async function mockApi(page: Page): Promise<MockState> {
     plans: new Map(),
     loseSubmit: false,
     changedPlan: false,
-    balanceError: false,
+    authenticated: true,
     incompleteGas: false,
-    disconnect: () => {
+    disconnect: (code?: number, reason?: string) => {
       for (const socket of sockets.splice(0)) {
-        socket.close()
+        socket.close({ code, reason })
       }
     },
     snapshot: () => {
@@ -102,6 +103,24 @@ export async function mockApi(page: Page): Promise<MockState> {
     if (path === '/health') {
       return respond({ status: 'ok' })
     }
+    if (path === '/v1/session') {
+      if (route.request().method() === 'POST') {
+        const { pin } = route.request().postDataJSON() as { pin: string }
+        state.loginPins.push(pin)
+        if (pin !== '012345') {
+          return respond({ error: { code: 'INVALID_PIN' } }, 401)
+        }
+        state.authenticated = true
+      }
+      return respond({ authenticated: state.authenticated })
+    }
+    if (path === '/v1/session/logout') {
+      state.authenticated = false
+      return respond({ authenticated: false })
+    }
+    if (!state.authenticated) {
+      return respond({ error: { code: 'AUTH_REQUIRED' } }, 401)
+    }
     if (path === '/ready') {
       return state.ready
         ? respond({ status: 'ready', readOnly: state.readOnly })
@@ -113,31 +132,13 @@ export async function mockApi(page: Page): Promise<MockState> {
     if (path === '/v1/config') {
       return respond({ ...config, readOnly: state.readOnly })
     }
-    if (path === '/v1/sync') {
-      return respond({
-        journal: {
-          pending: 0,
-          blocked: false,
-          connected: true,
-          historyLoaded: true,
-        },
-        state: {
-          available: true,
-          lastError: null,
-          snapshotBlock: 100,
-          requiredBlock: null,
-          refreshPending: false,
-          lastCheckedAt: Date.now(),
-        },
-      })
+    if (path === '/v1/journal') {
+      return respond({ blocked: false })
     }
     if (path === '/v1/fund') {
       return respond(fund)
     }
     if (path === '/v1/balances') {
-      if (state.balanceError) {
-        return respond({ error: { code: 'RPC_UNAVAILABLE' } }, 500)
-      }
       const amounts = [
         '50000000000',
         '84600000000000000000',

@@ -3,8 +3,8 @@ services:
     image: ghcr.io/free-mine/admin-server
     env_file: .env
     environment:
-      PUBLIC_SERVER_URL: ${PUBLIC_SERVER_URL:?Set PUBLIC_SERVER_URL in .env}
-      PUBLIC_SERVER_KEY: ${PUBLIC_SERVER_KEY:-}
+      ALLOWED_DOMAIN: ${ALLOWED_DOMAIN:?Set ALLOWED_DOMAIN in .env}
+      PANEL_PIN: ${PANEL_PIN:?Set PANEL_PIN in .env}
     volumes:
       - backend-data:/app/data
     stop_grace_period: 10s
