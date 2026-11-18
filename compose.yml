@@ -6,7 +6,7 @@ services:
       ALLOWED_DOMAIN: ${ALLOWED_DOMAIN:?Set ALLOWED_DOMAIN in .env}
       PANEL_PIN: ${PANEL_PIN:?Set PANEL_PIN in .env}
     volumes:
-      - backend-data:/app/data
+      - ./backend-data:/app/data
     stop_grace_period: 10s
 
   frontend:
@@ -15,6 +15,3 @@ services:
       dockerfile: client/Dockerfile
     ports:
       - '127.0.0.1:5175:80'
-
-volumes:
-  backend-data:
